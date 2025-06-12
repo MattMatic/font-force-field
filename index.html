@@ -673,7 +673,8 @@ class HarfBuzzForceFieldClass {
       }
       far = toValue(gb.far, far);
       near = toValue(gb.near, near);
-      nearBase = toValue(gb.nearBase, nearBase);
+      if (isMark)
+        nearBase = toValue(gb.nearBase, nearBase);
     }
     return {
       far: far,
@@ -792,7 +793,7 @@ class HarfBuzzForceFieldClass {
 
       paths.cpathsNear = paths.cpaths.inflateToNewCPaths64(nearInflate);
       paths.cpathsFar  = paths.cpaths.inflateToNewCPaths64(farInflate);
-      if (typeof gb.nearBase !== 'undefined')
+      if ((typeof(gb.nearBase) !== 'undefined') && (gb.nearBase !== null))
         paths.cpathsNearBase = paths.cpaths.inflateToNewCPaths64(gb.nearBase);
       this.glyphs[glyphId] = paths; // Result cached in this object
     }
