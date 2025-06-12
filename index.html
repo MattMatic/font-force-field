@@ -1,0 +1,1808 @@
+<html>
+<head>
+  <title>Font Force Field Test</title>
+  <style>
+body {
+  font-family: "Calibri";
+  background-color: #f0f0e0;
+}
+#inputText {
+  font-size: 150%;
+}
+#svgResult {
+  touch-action: none;
+}
+.tableColumnHead {
+  background-color: #ddb;
+}
+</style>
+<script type="text/javascript" src="js/hb.js"></script> <!-- Module - REQUIRED -->
+<script type="text/javascript" src="js/hbjs.js"></script>
+<script type="text/javascript" src="js/flatbezier.js"></script>
+<script type="module" src="./js/opentype.min.mjs" async></script>
+<script type="text/javascript" src="./js/otinfo.min.js"></script>
+</head>
+
+<body>
+<h1>Font Force Field Tool</h1>
+
+<table border=1 width='80%'>
+<tr><td width='70%' valign='top'>
+  <table border=0 width='100%'>
+    <tr><td width='25%'>Font:</td><td id='theFont'><div id='fontInfo'>-font-</div></td></tr>
+  </table>
+</td><td></td>
+</tr>
+<tr><th class='tableColumnHead'>Adhoc Test</th><th class='tableColumnHead'>List Processing</th></tr>
+<tr><td width='70%' valign="top">
+  <table border=0 width='100%'>
+  <tr><td width='25%'>Text:</td><td><input type="text" style="width:60%" id="inputText" oninput="updateValues();" value="abc"></input></td></tr>
+  <tr><td>Ranges:</td><td id='rangeChoice'>
+    <input type='radio' id='showSliders' name='rangeSettings' value='sliders' checked>Sliders</input>
+    <input type='radio' id='showJSON'    name='rangeSettings' value='JSON'>JSON</input>
+  </td></tr>
+</table>
+<span id='slidersDiv'>
+<table width='100%' id='slidersTable'>
+  <tr><td width='25%'>Base Near:</td><td><input type="range" style="width:60%" value="45"  min="0" max="100" step="1" id="baseNear" oninput="updateValues();"><label id='baseNearValue'></label></td></tr>
+  <tr><td>Base Far:</td><td><input type="range" style="width:60%"  value="95" min="0" max="500" step="1" id="baseFar" oninput="updateValues();"><label id='baseFarValue'></label></td></tr>
+  <tr><td>Mark Near:</td><td><input type="range" style="width:60%"  value="10"  min="0" max="100" step="1" id="markNear" oninput="updateValues();"><label id='markNearValue'></label></td></tr>
+  <tr><td>Mark-Base Near:</td><td><input type="range" style="width:60%"  value="5"  min="0" max="100" step="1" id="markNearBase" oninput="updateValues();"><label id='markNearBaseValue'></label></td></tr>
+  <tr><td>Mark Far:</td><td><input type="range" style="width:60%"  value="100" min="0" max="500" step="1" id="markFar" oninput="updateValues();"><label id='markFarValue'></label></td></tr>
+</table>
+</span>
+<span id='jsonDiv' hidden>
+<table width='100%' id='jsonTable'>
+  <tr><td width='25%'>JSON:</td>
+    <td>
+      <textarea style="width:60%" id="jsonText" cols='40' rows='8' wrap='off' oninput="updateJSON();">
+//** Drag and Drop .json or .txt **//
+
+// e.g.
+{
+  'font':{
+    'name':'MyFontName',
+    'version':'Exact Version'
+  },  // Warning if different
+
+  // 'n'  = Near
+  // 'f'  = Far
+  // 'nb' = Near Base (mark to glyph or cursive group)
+
+  'base':{'n':45, 'f':95},
+
+  'mark':{'n':10, 'nb':5, 'f':100},
+
+  // GID specific
+  //'643':{'n':'120%','f':'200%'},  // Using percentages
+  //'644':{'n':15,    'f':50},      // Explicit values
+
+  //'454':{'n':'80%', 'nb':'50%', 'f':40},  // Mixed. `nb` = mark-to-base near field
+}
+      </textarea>
+      </br>
+      <div id='jsonError' style='color:red'>-</div>
+    </td></tr>
+</table>
+</span>
+<table width='100%'>
+  <tr><td width='25%'>Colours:</td><td>
+    <input type='radio' id='colourGlyph' name='renderColour' value='glyph' checked>Glyph</input>
+    <input type='radio' id='colourSolid' name='renderColour' value='solid'>Solid</input>
+  </td></tr>
+  <tr><td>Options:</td><td>
+    <input type="checkbox" id="cbShowGids" checked><label for="cbShowGids">GIDs</label>
+  </td></tr>
+  <tr><td>Collisions:</td><td><span style='color:red' id='colNotify'></span></td></tr>
+  <tr><td>Too Far:</td><td><span style='color:red' id='farNotify'></span></td></tr>
+  <tr><td>Output:</td><td><span style='color:blue' id='wordRating'></span></td></tr>
+  </table>
+</td>
+<td width='50%' valign='top'>
+  <table border=0 width='100%' id='WordsDragDrop'>
+  <tr><td width='25%'>Word List:</td><td><div id='wordListDetails'>(drag .txt. file here)</div> <button hidden onclick='rateWordList();' id='btnRateWordList'>Rate!</button> <button onclick='saveResults();' hidden id='saveListButton'>Save List</button></td></tr>
+  <tr><td>Progress:</td><td><div id='statusUpdate'>-</div> <button onclick='AbortProgress();' id='AbortButton' hidden>Abort!</button></td></tr>
+  <tr><td>Stats:</td><td><div id='statusCounts'>-</div></td></tr>
+  <tr><td>Random word:</td><td><button onclick='randomWord(false);'>Failed</button><button onclick='randomWord(true);'>Passed</button></td></tr>
+  <tr><td>Sync:</td><td>
+    <button onclick='openFontCompareWordListTool();' id='btnFCWL'>Font Compare Word List</button>
+  </td></tr>
+  </table>
+</td>
+</tr>
+</table>
+
+<span id='infoText'></span>
+
+<!--<canvas id="myCanvas" width="1000" height="500" resize
+viewBox="-250 -1800 1500 1000" preserveAspectRatio="none"
+></canvas>-->
+
+<div id="svgResult"></div>
+<p>
+  <button id="saveSvg" onclick="DownloadSvg();">Download SVG</button>
+  <button id="zoomOutSVG" onclick="zoomSVG(-1);">-</button>
+  <button id="zoomResetSVG" onclick="zoomSVG(0);" title="Middle click or Shift-Left and drag to pan the SVG">100%</button>
+  <button id="zoomInSVG" onclick="zoomSVG(1);">+</button>
+</body>
+
+<script>
+"use strict";
+function DownloadSvg() {
+  var tempLink = document.createElement("a");
+  var taBlob = new Blob([svgResult.innerHTML.replace(' height="512"', '')], { type: 'text/plain' });
+  tempLink.setAttribute('href', URL.createObjectURL(taBlob));
+  tempLink.setAttribute('download', 'fontforcefield.'+inputText.value + '.svg');
+  tempLink.click();
+  URL.revokeObjectURL(tempLink.href);
+}
+
+function updateSvg(dive, html) {
+  var oldScale = 1;
+  var oldTranslate = {x:0, y:0};
+
+  var svge = dive.children[0];
+  if (typeof svge !== 'undefined') {
+    oldScale = svge.currentScale;
+    oldTranslate = svge.currentTranslate;
+  }
+  dive.innerHTML = html;
+  svge = dive.children[0];
+  svge.currentScale = oldScale;
+  svge.currentTranslate.x = oldTranslate.x;
+  svge.currentTranslate.y = oldTranslate.y;
+}
+
+function adjustSVGzoom(svge, amount) {
+  var newScale
+  if (amount < 0){newScale=svge.currentScale/1.1}
+  if (amount > 0){newScale=svge.currentScale*1.1}
+  if (amount ==0){newScale=1}
+  var oldScale=svge.currentScale
+  var y = svge.clientHeight / 2;
+  svge.currentTranslate.y=(-y+svge.currentTranslate.y)*(newScale/oldScale)
+  svge.currentTranslate.x=(0+svge.currentTranslate.x)*(newScale/oldScale)
+  svge.currentScale=newScale
+  svge.currentTranslate.y+=y;
+  svge.currentTranslate.x+=0;
+}
+
+function zoomSVG(amount) {
+  const svge = svgResult.children[0];
+  adjustSVGzoom(svge, amount);
+  if (amount==0) {
+    svge.currentTranslate.y = 0;
+    svge.currentTranslate.x = 0;
+  }
+}
+
+function addSVGZoomAndPan(svg){
+  // From https://github.com/Holger-Will/SVGZoomAndPan/blob/master/zap.js
+  svg.addEventListener("wheel",function(evt){
+    var newScale
+    if(evt.deltaY>0){newScale=svg.currentScale/1.1}
+    if(evt.deltaY<0){newScale=svg.currentScale*1.1}
+    var oldScale=svg.currentScale
+     svg.currentTranslate.x=(-evt.offsetX+svg.currentTranslate.x)*(newScale/oldScale)
+     svg.currentTranslate.y=(-evt.offsetY+svg.currentTranslate.y)*(newScale/oldScale)
+     svg.currentScale=newScale
+     svg.currentTranslate.x+=evt.offsetX
+     svg.currentTranslate.y+=evt.offsetY
+     var event = new Event('SVGZoom');
+     svg.dispatchEvent(event);
+     evt.preventDefault();  // Stop window from scrolling (update to zap.js)
+  } /*, {passive:true}*/)
+  svg.addEventListener("mousedown",function(evt){
+    if(evt.shiftKey || evt.button==1){
+      svg.classList.add("dragging")
+      var ox=evt.offsetX
+      var oy=evt.offsetY
+      var otx=svg.currentTranslate.x
+      var oty=svg.currentTranslate.y
+      svg.addEventListener("mousemove",move)
+      document.addEventListener("mouseup",out)
+      var event = new Event('SVGScroll');
+      svg.dispatchEvent(event)
+      function out(evt){
+        svg.removeEventListener("mousemove",move)
+        document.removeEventListener("mouseup",out)
+        svg.classList.remove("dragging")
+        var event = new Event('SVGScroll');
+        svg.dispatchEvent(event)
+      }
+      function move(evt){
+        svg.currentTranslate.x=otx+(evt.offsetX-ox)
+        svg.currentTranslate.y=oty+(evt.offsetY-oy)
+        var event = new Event('SVGScroll');
+        svg.dispatchEvent(event)
+      }
+    }
+  })
+}
+
+function rangeChange(id) {
+  if (showJSON.checked) {
+    slidersDiv.hidden = true;
+    jsonDiv.hidden = false;
+  } else {
+    slidersDiv.hidden = false;
+    jsonDiv.hidden = true;
+  }
+  updateValues();
+}
+
+function UpdateListener(id, event, foo) {
+  var e = document.getElementById(id);
+  if (e && !foo) {
+    e.addEventListener(event, function(e) {
+      updateValues();
+    });
+  } else
+  if (e) {
+    e.addEventListener(event, function(e) {
+      foo(e);
+    });
+  }
+}
+
+UpdateListener('cbShowGids', 'input');
+UpdateListener('colourGlyph', 'input');
+UpdateListener('colourSolid', 'input');
+UpdateListener('showSliders', 'input', rangeChange);
+UpdateListener('showJSON', 'input', rangeChange);
+
+
+var hbfcwl = null;
+var api = {};
+var fontFileName = '';
+
+function openFontCompareWordListTool() {
+  api = {};
+  api.transfer = {};
+  api.transfer.script = hbTest.script;
+  api.transfer.language = hbTest.language;
+  api.transfer.fontBlob = fontBlob;
+  api.transfer.fontFileName = fontFileName;
+  var wlfn = '';
+  if (typeof(wordListFileName) !== 'undefined')
+    api.transfer.wordListFileName = wordlistFilename;
+  const xfer = api.transfer;
+  xfer.wordList = hbTest.getWordList();
+  if (!hbfcwl || hbfcwl.closed) {
+    var hbfcwl_url;
+    if (window.location.hostname === 'localhost')
+      hbfcwl_url = '../font-compare-word-list/index.html';
+    else
+      hbfcwl_url = 'https://mattmatic.github.io/font-compare-word-list/index.html';
+    hbfcwl = window.open(hbfcwl_url, 'mattmatic.font-compare-word-list')
+  } else {
+    hbfcwl.updateTransfer(api.transfer);
+    hbfcwl.focus();
+  }
+}
+
+</script>
+<script type='module'>
+"use strict";
+
+import Clipper2ZFactory from "./js/clipper2z.js"
+import Clipper2ZUtilsFactory from './js/clipper2z-utils.js';
+import * as opentype from './js/opentype.min.mjs';
+import Layout from './js/opentype.layout.gdef.mjs';
+import JSON5 from './js/json5.index.min.mjs'
+
+const promises = [
+      Clipper2ZFactory(),
+      Clipper2ZUtilsFactory(),
+      createHarfBuzz()
+    ];
+
+let harfBuzzModule;
+let Clipper2Z;
+let Clipper2ZUtils;
+
+Promise.all(promises).then(([aClipper2Z, aClipper2ZUtils, aharfBuzzModule]) => {
+  Clipper2Z = aClipper2Z;
+  Clipper2ZUtils = aClipper2ZUtils;
+
+  harfBuzzModule = aharfBuzzModule;
+  window.hb = hbjs(harfBuzzModule);
+  // -v-v-v- DEBUG: make these available outside the module
+  window.Clipper2Z = Clipper2Z;
+  window.Clipper2ZUtils = Clipper2ZUtils;
+  // -^-^-^-
+  onResourcesLoaded();
+});
+
+function loadTheFont(blob) {
+  window.fontBlob = blob;
+  hbTest.setFontBlob(blob);
+  fontInfo.innerHTML = hbTest.fileDescription;
+}
+
+function onResourcesLoaded() {
+  var fontName = 'samples/Gulzar-Regular-1.002.ttf';
+  fetch(fontName).then(function (res) {
+    return res.arrayBuffer();
+  }).then(function (blob) { // can be used without our wrapper
+    hbTest.setBase(baseNear.value, baseFar.value);
+    //inputText.value = "\u0631\u06cc\u0644\u062c\u06cc\u0648";
+    //inputText.value = "\u063a\u06cc\u0631\u0646\u0641\u0639";
+    //inputText.value = "\u062a\u0644";
+    inputText.value = "\u0626\u0626\u0632\u0626\u06cc";
+    loadTheFont(new Uint8Array(blob));
+    updateValues();
+  });
+}
+
+var drawFuncsPtr = null;
+var haveDrawnPaths = 0;
+
+function isExists(v) {
+  if ((typeof(v) === 'object') && (v === null)) return false;
+  return typeof(v) !== 'undefined';
+}
+
+function isAssigned(obj) {
+  if (typeof obj === 'undefined') return false;
+  if (obj === null) return false;
+  return true;
+}
+
+// Class to wrap up a Clipper2 Paths64 and Bounding Box
+// and provide some basic optimisation calculations
+class CPaths64 {
+  constructor() {
+    this.paths64 = new Clipper2Z.Paths64();
+    this.bbox = {x:{min:NaN, max:NaN},y:{min:NaN, max:NaN},width:0,height:0};
+  }
+  destroy() {
+    this.freePath();
+  }
+  freePath() {
+    if (isAssigned(this.paths64)) {
+      this.paths64.clear();
+      this.paths64.delete();
+      delete this.paths64;      
+    }
+  }
+  // Iterate through the paths and each path to find bounding box
+  findBoundingBox() {
+    this.bbox = {x:{}, y:{}}
+    const size = this.paths64.size();
+    for (let i=0; i<size; i++) {
+      const path = this.paths64.get(i);
+      const sizep = path.size();
+      for (let ii=0; ii<sizep; ii++) {
+        const point = path.get(ii);
+        const x = Number(point.x);
+        const y = Number(point.y);
+        if (!isAssigned(this.bbox.x.min) || (x < this.bbox.x.min)) this.bbox.x.min = x;
+        if (!isAssigned(this.bbox.x.max) || (x > this.bbox.x.max)) this.bbox.x.max = x;
+        if (!isAssigned(this.bbox.y.min) || (y < this.bbox.y.min)) this.bbox.y.min = y;
+        if (!isAssigned(this.bbox.y.max) || (y > this.bbox.y.max)) this.bbox.y.max = y;
+        point.delete(); //????
+      }
+      path.delete();
+    }
+    this.updateWidthHeight();
+  }
+  // Update just the bounding box width and height
+  updateWidthHeight() {    
+    this.bbox.width  = (this.bbox.x.max - this.bbox.x.min);
+    this.bbox.height = (this.bbox.y.max - this.bbox.y.min);    
+  }
+  // Return the bound box
+  getBoundingBox() {
+    const result = bbox;
+    return result;
+  }
+  // Iterate through all paths and remove any that are smaller than `minArea`
+  removeSmallAreas(minArea) {
+    const { AreaPath64, Paths64 } = Clipper2Z;
+    const count = this.paths64.size();
+    var output = new Paths64();
+    for (let i=0; i<count;i++) {
+      const path = this.paths64.get(i);
+      const area = Math.abs(AreaPath64(path));
+      if (area >= minArea) {
+        output.push_back(path);
+      } else {
+        path.delete();
+      }
+    }
+    this.freePath();
+    this.setPaths64(output);
+    this.findBoundingBox(); // Might have changed if small areas were on the outside edges
+  }
+  // Set this CPaths64 to a Clipper2Z Paths64 value, updating the bounding box
+  setPaths64(ps64, dontFindBoundingBox) {
+    if (isAssigned(this.paths64) && (ps64 != this.paths64)) {
+      this.freePath();
+    }
+    this.paths64 = ps64;
+    if (!dontFindBoundingBox) this.findBoundingBox();
+  }
+  // Translate this path by (oxi, oyi) and return a new CPaths64
+  translateToNewCPaths64(oxi, oyi) {
+    oxi = Number(oxi);
+    oyi = Number(oyi);
+    const { TranslatePaths64 } = Clipper2Z;
+    var result = new CPaths64();
+    result.freePath();
+    result.setPaths64(TranslatePaths64(this.paths64, oxi, oyi), true);
+    result.bbox.x.min = this.bbox.x.min + oxi;
+    result.bbox.x.max = this.bbox.x.max + oxi;
+    result.bbox.y.min = this.bbox.y.min + oyi;
+    result.bbox.y.max = this.bbox.y.max + oyi;
+    return result;
+  }
+  // Inflate this path by `idelta` and return a new CPaths64 object.
+  // settings.jointype = JoinType.Miter
+  // settings.mitreLimit = 25
+  // settings.arcTolerance = 0.1
+  // settings.simplifyFactor = 0.5
+  inflateToNewCPaths64(idelta, settings) {
+    const { MakePath64, Paths64, InflatePaths64, SimplifyPaths64, JoinType, EndType } = Clipper2Z;
+    var result = new CPaths64();
+    settings = settings || {};
+    if (!isExists(settings.jointype)) settings.jointype = /*JoinType.Miter; */ JoinType.Round;
+    if (!isExists(settings.mitreLimit)) settings.mitreLimit = 25; //idelta;// * idelta; //25
+    if (!isExists(settings.arcTolerance)) settings.arcTolerance = 0.1;
+    if (!isExists(settings.simplifyFactor)) settings.simplifyFactor = 0.1;
+    var newpaths64 = InflatePaths64(this.paths64, idelta, settings.jointype, EndType.Polygon, settings.mitreLimit, settings.arcTolerance);
+    if (settings.simplifyFactor > 0) {
+      var oldpaths64 = newpaths64;
+      newpaths64 = SimplifyPaths64(oldpaths64, settings.simplifyFactor);
+      oldpaths64.clear();
+      oldpaths64.delete();
+    }
+    result.setPaths64(newpaths64);
+    //--//this.removeSmallAreas(idelta * idelta);
+    return result;
+  }
+  // Check whether this and `cp` are far away (using the bounding boxes)
+  isFarAway(cp) {
+    // Comparing bounding boxes to optimise calculations
+    if (cp.bbox.x.min > this.bbox.x.max) return true;
+    if (cp.bbox.x.max < this.bbox.x.min) return true;
+    if (cp.bbox.y.min > this.bbox.y.max) return true;
+    if (cp.bbox.y.max < this.bbox.y.min) return true;
+    return false; // _might_ collide. Need to do geometry
+  }
+  // Check for collisions between this and `cp`
+  // Returns null if no collision.
+  // Otherwise returns a new CPaths64 with the intersection
+  collisionCPath(cp) {
+    const { Intersect64, Union64FillRule, FillRule } = Clipper2Z;
+    if (this.isFarAway(cp)) {
+      return null;
+    }
+    var intersect = Intersect64(this.paths64, cp.paths64, FillRule.NonZero);
+    if (intersect.size() == 0) {
+      intersect.clear();
+      intersect.delete();
+      return null;
+    }
+    var result = new CPaths64();
+    result.setPaths64(intersect);
+    return result;
+  }
+  // Meld `cp` into this CPaths64
+  unionWith(cp) {
+    const { Union64, FillRule, Union64FillRule } = Clipper2Z;
+    var res = Union64(this.paths64, cp.paths64, FillRule.NonZero);
+    this.freePath();
+    this.setPaths64(res, true);
+    if (cp.bbox.x.min < this.bbox.x.min) this.bbox.x.min = cp.bbox.x.min;
+    if (cp.bbox.x.max > this.bbox.x.max) this.bbox.x.max = cp.bbox.x.max;
+    if (cp.bbox.y.min < this.bbox.y.min) this.bbox.y.min = cp.bbox.y.min;
+    if (cp.bbox.y.max > this.bbox.y.max) this.bbox.y.max = cp.bbox.y.max;
+    this.updateWidthHeight();
+  }
+  xorWith(cp) {
+    const { Xor64, FillRule, Union64FillRule } = Clipper2Z;
+    var res = Xor64(this.paths64, cp.paths64, FillRule.NonZero);
+    this.freePath();
+    this.setPaths64(res);
+  }
+  // Count the positive paths in the set
+  // (Used for finding 'far' glyphs)
+  countIslands() {
+    const { IsPositive64 } = Clipper2Z;
+    const size = this.paths64.size();
+    var count = 0;
+    for (let i=0;i<size;i++) {
+      const path = this.paths64.get(i);
+      if (IsPositive64(path)) count++;
+      path.delete();
+    }
+    return count;
+  }
+  // Methods for rendering the original glyph to create the paths
+  // Add a single point to the set of points
+  // NOTE: updates bounding box
+  addPoint(ix, iy) {  // Integer values!
+    this.points = this.points || [];
+    this.points.push(ix, iy);
+    this.last = {x:ix, y:iy};
+    if (!(this.bbox.x.min) || (ix < this.bbox.x.min)) this.bbox.x.min = ix;
+    if (!(this.bbox.x.max) || (ix > this.bbox.x.max)) this.bbox.x.max = ix;
+    if (!(this.bbox.y.min) || (iy < this.bbox.y.min)) this.bbox.y.min = iy;
+    if (!(this.bbox.y.max) || (iy > this.bbox.y.max)) this.bbox.y.max = iy;
+  }
+  // Close the path, back to the beginning, and add to the paths.
+  // NOTE: bounding box already updated with `addPoint`
+  closePath() {
+    const { MakePath64, Paths64 } = Clipper2Z;
+    if (this.points.length > 0) {
+      if (!isAssigned(this.paths64)) {
+        this.paths64 = new Paths64();
+      }
+      this.points.push(this.points[0], this.points[1]); // Close the path back to the beginning
+      this.paths64.push_back(MakePath64(this.points));
+      delete this.points;
+      this.last = {};
+      this.updateWidthHeight();
+    }
+  }
+}
+
+class HarfBuzzForceFieldClass {
+  constructor() {
+    this.glyphs = {};
+    this.glyphValues = {};
+    this.svgData = '';
+  }
+  destroy() {
+    this.freeFont();
+    delete(this.fontBlob);    
+  }
+  freeFontBlob() {
+    this.freeFont();
+    delete(this.fontBlob);
+  }
+  freeFont() {
+    if (isAssigned(this.font)) { this.font.destroy(); delete(this.font); }
+    if (isAssigned(this.face)) { this.face.destroy(); delete(this.face); }
+    if (isAssigned(this.blob)) { this.blob.destroy(); delete(this.blob); }
+    //this.glyphs = {};
+    this.freeGlyphCache();
+    this.glyphValues = {};
+    delete(this.otLayout);
+    delete(this.otFont);
+  }
+  freeGlyphValues() {
+    this.glyphValues = {};
+  }
+  freeGlyphCache() {
+    if (!isAssigned(this.glyphs)) return;
+    if (isAssigned(this.glyphs) && (this.glyphs.length>0)) {
+      Object.keys(this.glyphs).forEach(function(k) {
+        const e = this.glyphs[k];
+        e.cpaths.freePath();
+        e.cpathsNear.freePath();
+        if (e.cpaths.cpathsNearBase) c.cpathsNearBase.freePath();
+        e.cpathsFar.freePath();
+      });
+    }
+    this.glyphs = {};
+  }
+  setScriptLanguage(script, language) {
+    this.script = script;
+    this.language = language;
+  }
+  clearScriptLanguage() {
+    this.script = null;
+    this.language = null;
+  }
+  setFeatures(features) {
+    this.features = features;
+  }
+  clearFeatures() {
+    this.features = null;
+  }
+  setFontBlob(fb) {
+    this.freeFont();
+    this.fontBlob = fb;
+    if (!isAssigned(fb)) return;
+    const otInfo = OTInfo.parse(fb);
+    this.fontInfo = otInfo[0];
+    this.fontName = this.fontInfo.name;
+    this.fileDescription = this.fontName.fullName + '</br>' + this.fontName.version;
+
+    this.blob = hb.createBlob(this.fontBlob);
+    this.face = hb.createFace(this.blob, 0);
+    this.font = hb.createFont(this.face);
+    this.otFont = opentype.parse(fb);
+    this.otLayout = new Layout(this.otFont, 'GPOS');
+  }
+  getGlyphClass(gid) {
+    return this.otLayout.getGlyphClass(this.otFont.tables.gdef.classDef, gid);
+  }
+  isMarkClass(gid) {
+    return (this.getGlyphClass(gid) === 3);
+  }
+  setBase(near, far) {
+    if ((near != this.baseNear) || (far != this.baseFar)) {
+      this.freeGlyphCache();
+    }
+    this.baseNear = near;
+    this.baseFar  = far;
+  }
+  setMark(near, nearBase, far) {
+    if ((near != this.markNear) ||
+        (far  != this.markFar) ||
+        (nearBase != this.markNearBase)) {
+      this.freeGlyphCache();
+    }
+    this.markNear = near;
+    this.markNearBase = nearBase;
+    this.markFar = far;
+  }
+  setGlyphValues(gid, far, near, nearBase) {
+    this.glyphValues[gid] = {
+      far:far,
+      near:near, 
+      nearBase:nearBase, 
+    };
+  }
+  getGlyphValues(gid) {
+    const isMark = (this.getGlyphClass(gid) === 3);
+    const gb = this.glyphValues[gid];
+    var near = this.baseNear || 30;
+    var far  = this.baseFar || 90;
+    var nearBase = null;
+
+    if (isMark) {
+      near = this.markNear || 30;
+      far  = this.markFar || 90;
+      nearBase = this.markNearBase || 1;
+    }
+    if (isAssigned(gb)) {
+      var toValue = function(txt, v) {
+        if (txt ===  null) return v;
+        if (typeof(txt) === 'undefined') return v;
+        if (typeof(txt) !== 'string') return txt;
+        const n = parseInt(txt, 10);
+        if (txt.includes('%')) {
+          return (v * n) / 100.0;
+        }
+        if (isNaN(txt)) return v;
+        return n;
+      }
+      far = toValue(gb.far, far);
+      near = toValue(gb.near, near);
+      nearBase = toValue(gb.nearBase, nearBase);
+    }
+    return {
+      far: far,
+      near: near,
+      nearBase: nearBase,
+    };
+  }
+
+  //----------------------------------------------------------------------
+  // Converts the glyph drawing to an array of point arrays compatible with Clipper2
+  // The array is [x0,y0, x1,y1, etc]
+  // Also calculates the bound box in `bbox` with width and height
+  // NOTE: Cubic Bezier curve flattening not tested yet!!
+  glyphToPolyline(glyphId) {
+    if (!isAssigned(this.glyphs[glyphId])) {
+      var ptr = this.font.ptr;
+      var exports = harfBuzzModule.wasmExports;
+      var addFunction = harfBuzzModule.addFunction;
+      /*
+      var lastXY = {};
+      var firstXY = {};
+      */
+      var paths = [];
+      var points = [];
+      var bbox = {};
+      const { MakePath64, Paths64, InflatePaths64, SimplifyPaths64, JoinType, EndType } = Clipper2Z;
+      var cpaths = new Paths64();
+
+      var cpaths64 = new CPaths64();
+      var updatePoint = function(x, y) {
+        x = Math.round(x);
+        y = Math.round(y);
+        cpaths64.addPoint(x, y);
+        /*
+        points.push(x, y);
+        if (!bbox.min) bbox.min = {};
+        if (!bbox.max) bbox.max = {};
+        if (!bbox.min.x || (x < bbox.min.x)) bbox.min.x = x;
+        if (!bbox.min.y || (y < bbox.min.y)) bbox.min.y = y;
+        if (!bbox.max.x || (x > bbox.max.x)) bbox.max.x = x;
+        if (!bbox.max.y || (y > bbox.max.y)) bbox.max.y = y;
+        lastXY = {x:x, y:y};
+        */
+      }
+      if (!drawFuncsPtr) {
+        var moveTo = function (dfuncs, draw_data, draw_state, to_x, to_y, user_data) {
+          //pathBuffer += `M${to_x},${to_y}`;
+          // Starting a new set
+          updatePoint(to_x, to_y);
+        }
+        var lineTo = function (dfuncs, draw_data, draw_state, to_x, to_y, user_data) {
+          //pathBuffer += `L${to_x},${to_y}`;
+          updatePoint(to_x, to_y);
+        }
+        var cubicTo = function (dfuncs, draw_data, draw_state, c1_x, c1_y, c2_x, c2_y, to_x, to_y, user_data) {
+          //pathBuffer += `C${c1_x},${c1_y} ${c2_x},${c2_y} ${to_x},${to_y}`;
+          // Flatten Cubic Bezier to Lines...
+          const last = cpaths64.last;
+          let c = {p0: {x:last.x, y:last.y}, p1:{x:c1_x, y:c1_y}, p2:{x:c2_x, y:c2_y}, p3:{x:to_x, y:to_y}};
+          let qs = cubicBezToQuadratics(c, quadBezState.tolerance); // Tolerance???
+          for (let q of qs) {
+            let ts = quadBezFlatten(q);
+            for (let t of ts) {
+              const {x,y} = evalQuadBez(q, t);
+              updatePoint(x, y);
+            }
+          }
+          updatePoint(to_x, to_y);
+        }
+        var quadTo = function (dfuncs, draw_data, draw_state, c_x, c_y, to_x, to_y, user_data) {
+          //pathBuffer += `Q${c_x},${c_y} ${to_x},${to_y}`;
+          // Flatten Quadratic Bezier to Lines...
+          const last = cpaths64.last;
+          let q = { p0: {x:last.x, y:last.y}, p1: {x:c_x, y:c_y}, p2: {x:to_x, y:to_y}};
+          let ts = quadBezFlatten(q);
+          for (let t of ts) {
+            const {x, y} = evalQuadBez(q, t);
+            updatePoint(x, y);
+          }
+        }
+        var closePath = function (dfuncs, draw_data, draw_state, user_data) {
+          cpaths64.closePath();
+        }
+
+        var moveToPtr = addFunction(moveTo, 'viiiffi');
+        var lineToPtr = addFunction(lineTo, 'viiiffi');
+        var cubicToPtr = addFunction(cubicTo, 'viiiffffffi');
+        var quadToPtr = addFunction(quadTo, 'viiiffffi');
+        var closePathPtr = addFunction(closePath, 'viiii');
+        var drawFuncsPtr = exports.hb_draw_funcs_create();
+        exports.hb_draw_funcs_set_move_to_func(drawFuncsPtr, moveToPtr, 0, 0);
+        exports.hb_draw_funcs_set_line_to_func(drawFuncsPtr, lineToPtr, 0, 0);
+        exports.hb_draw_funcs_set_cubic_to_func(drawFuncsPtr, cubicToPtr, 0, 0);
+        exports.hb_draw_funcs_set_quadratic_to_func(drawFuncsPtr, quadToPtr, 0, 0);
+        exports.hb_draw_funcs_set_close_path_func(drawFuncsPtr, closePathPtr, 0, 0);
+      }
+
+      var pathBuffer = "";
+      exports.hb_font_draw_glyph(ptr, glyphId, drawFuncsPtr, 0);
+      if (bbox.max && bbox.min) {
+        bbox.width = bbox.max.x - bbox.min.x;
+        bbox.height = bbox.max.y - bbox.min.y;
+      } else {
+        bbox.width = 0;
+        bbox.height = 0;
+      }
+      paths.bbox = bbox;
+      // Clipper2 Paths
+      paths.cpaths = cpaths64;
+      const mitreLimit = 25;
+      const arcTolerance = 0;
+
+      const gb = this.getGlyphValues(glyphId);
+      const nearInflate = gb.near;  // Overlaps = too close
+      const farInflate  = gb.far;   // No Overlaps = too far
+
+      paths.cpathsNear = paths.cpaths.inflateToNewCPaths64(nearInflate);
+      paths.cpathsFar  = paths.cpaths.inflateToNewCPaths64(farInflate);
+      if (typeof gb.nearBase !== 'undefined')
+        paths.cpathsNearBase = paths.cpaths.inflateToNewCPaths64(gb.nearBase);
+      this.glyphs[glyphId] = paths; // Result cached in this object
+    }
+    return this.glyphs[glyphId];
+  }
+  drawSVGPath(p64, settings) {
+    const size = p64.size();
+    for (let i=0;i<size;i++) {
+      const point = p64.get(i);
+      const x= Number(point.x) *  1;
+      const y= Number(point.y) * -1;
+      if (i==0)
+        this.svgData += `M${x},${y}`;
+      else
+        this.svgData += `L${x},${y}`;
+      point.delete(); //??
+    }
+    this.svgData += 'z';
+  }
+  drawSVGPaths(ps64, settings) {
+    if (!isAssigned(ps64)) return;
+    settings = settings || {};
+    if (!isExists(settings.mixBlendMode)) settings.mixBlendMode = 'normal';
+    this.svgData += '<path ';
+    if (settings.id) {
+      this.svgData += `id="${settings.id}" `;
+    }
+    this.svgData += ' style="';
+    if (isExists(settings.fillColor)) {
+      if (!isExists(settings.fillOpacity)) settings.fillOpacity = 0.5;
+      this.svgData += 'fill:'+settings.fillColor
+                    +';fill-opacity:'+settings.fillOpacity
+    } else {
+      this.svgData += ';fill-opacity:0';
+    }
+    if (isExists(settings.strokeColor)) {
+      if (!isExists(settings.strokeOpacity)) settings.strokeOpacity = 1.0;
+      if (!isExists(settings.strokeWidth)) settings.strokeWidth = 2;
+      this.svgData += ';stroke:'+settings.strokeColor
+                    +';stroke-opacity:'+settings.strokeOpacity
+                    +';stroke-width:'+settings.strokeWidth
+                    +';stroke-linejoin=\'round\''
+    }
+    if (settings.mixBlendMode !== 'normal')
+      this.svgData +=';mix-blend-mode:\''+settings.mixBlendMode+'\''
+    
+    this.svgData += '" d="';
+    const size = ps64.size();
+    for (let i=0;i<size;i++) {
+      const path = ps64.get(i);
+      this.drawSVGPath(path, settings);
+      path.delete();
+    }
+    this.svgData += '"/>\r\n';
+  }
+  drawCPaths(cp, color, settings) {
+    //if (cp) drawPaths(cp.paths64, color);
+    if (!isAssigned(settings)) settings = {};
+    if (color) settings.strokeColor = color;
+    this.drawSVGPaths(cp.paths64, settings);
+  }
+  drawGlyphPaths(glyph, min, max) {
+    if (max) drawPaths(max,     {fillColor:'#00c0c0'});
+    if (glyph) drawPaths(glyph, {strokeColor:'#000000'});
+    if (min) drawPaths(min,     {fillColor:'#00c020'});
+  }
+  drawCollisionPaths(col) {
+    if (col) drawPaths(col,     {strokeColor:'#f04040',fillColor:'#f04040'});
+  }
+  startSVG() {
+    this.svgData = '';
+  }
+  renderSVG() {
+    const xmin = -250;
+    const ymin = -1800;
+    const height = 3000;
+    const heightOut = 400;
+    const width = (window.innerWidth) * height / heightOut * 0.95;
+    var bbox = xmin + ' ' + ymin + ' ' +width + ' ' + height;
+    this.svgData = '<svg xmlns="http://www.w3.org/2000/svg"'
+      + ' height="400"'
+      + ' viewBox="'+bbox+'">' +this.svgData+'</svg>';
+    updateSvg(svgResult, this.svgData);
+    addSVGZoomAndPan(svgResult.children[0]);
+  }
+  getWordList() {
+    var res = [];
+    const size = wordList.length;
+    for (let i = 0; i<size; i++) {
+      const we = wordList[i];
+      res.push(
+        {
+          word: we.getWord(),
+          checked: we.getChecked(),
+          note: we.getNote(),
+        }
+        );
+    }
+    return res;
+  }
+}
+
+class CursivesSet {
+  constructor() {
+    this.sets = [];
+  }
+  findIndex(i) {
+    var res = null;
+    this.sets.find(function(e) {
+      if (e.includes(i)) {
+        res = e;
+        return true;
+      }
+      return false;
+    });
+    return res;
+  }
+  addPair(p1, p2) {
+    var e = this.findIndex(p1);
+    if (e) {
+      e.push(p2);
+      return e;
+    }
+    e = this.findIndex(p2);
+    if (e) {
+      e.push(p1);
+      return e;
+    }
+    e = [p1, p2];
+    this.sets.push(e);
+    return e;
+  }
+  findPair(p1, p2) {
+    var e = this.findIndex(p1);
+    if (e && e.includes(p2))
+      return e;
+    return null;
+  }
+  reverseIndices(count) {
+    this.sets.forEach(function(e) {
+      const size = e.length;
+      for (let i=0;i<size;i++) {
+        e[i] = count - e[i] - 1;
+      }
+    });
+  }
+}
+
+class MarksSet {
+  constructor() {
+    this.sets = [];
+  }
+  findIndex(i) {
+    var res = null;
+    this.sets.find(function(e) {
+      if (e.includes(i)) {
+        res = e;
+        return true;
+      }
+      return false;
+    });
+    return res;
+  }
+  addPair(p1, p2) {
+    var e = this.findIndex(p1);
+    if (e) {
+      if (e[1] == p2) return e;
+    }
+    e = [p1, p2];
+    this.sets.push(e);
+    return e;
+  }
+  findEither(p1, p2) {
+    // Find the MARK gid in either p1 or p2
+    return this.sets.find((s) => (s[0] == p1) || (s[0] ==p2));
+  }
+  findBoth(p1, p2) {
+    return this.sets.find((s) => (s.includes(p1) && s.includes(p2)));
+  }
+  findEitherBase(p1, p2) {
+    var e = this.findIndex(p1);
+    if (e) return e[1];
+    if (p2) {
+      e = this.findIndex(p2);
+      if (e) return e[1];
+    }
+    return null;
+  }
+  reverseIndices(count) {
+    this.sets.forEach(function(e) {
+      const size = e.length;
+      for (let i=0;i<size;i++) {
+        e[i] = count - e[i] - 1;
+      }
+    });
+  }
+}
+
+
+function shapeAndFindAttachments(font, buffer, features) {
+  const exports = hb.hooks.exports;
+  const addFunction = hb.hooks.addFunction;
+  const removeFunction = hb.hooks.removeFunction;
+  const utf8Decoder = hb.hooks.utf8Decoder;
+  const Module = hb.hooks.Module;
+
+  var data = {};
+  data.cursives = new CursivesSet();
+  data.marks = new MarksSet();
+
+  var pullGlyphIndices = function(txt) {
+    const parts = / at ([\d]+).* at ([\d]+)/.exec(txt);
+    if (!parts) return null;
+    return parts.slice(1).map((p) => parseInt(p, 10));
+  }
+  var traceFunc = function(bufferPtr, fontPtr, messagePtr, user_data) {
+    var message = utf8Decoder.decode(Module.HEAPU8.subarray(messagePtr, Module.HEAPU8.indexOf(0, messagePtr)));
+    if (message.startsWith('cursive attached')) {
+      const gis = pullGlyphIndices(message);
+      data.cursives.addPair(gis[0], gis[1]);
+    }
+    if (message.startsWith('attached mark')) {
+      const gis = pullGlyphIndices(message);
+      data.marks.addPair(gis[0], gis[1]);
+    }
+    return 1;
+  }
+
+  var traceFuncPtr = addFunction(traceFunc, 'iiiii');
+  exports.hb_buffer_set_message_func(buffer.ptr, traceFuncPtr, 0, 0);
+  hb.shape(font, buffer, features, 0);
+  removeFunction(traceFuncPtr);
+  return data;
+}
+
+function unifyAttachmentsOrder(attachments, bufferResults) {
+  if (bufferResults && (bufferResults.length > 0) && (bufferResults[0].cl === 0))
+    return attachments; // LTR all ok
+  // The result is RTL, so the traced glyph indices need swapping to match the visual order
+  const glyphCount = bufferResults.length;
+  attachments.cursives.reverseIndices(glyphCount);
+  attachments.marks.reverseIndices(glyphCount);
+  return attachments;
+}
+
+
+const colors = {
+  glyphBase:    '#000',
+  glyphMark:    '#404',
+  minBase:      '#4d4',
+  minMarkBase:  '#7e7',
+  maxBase:      '#8af', //'#08e',
+  collision:    '#f44',
+    
+  maxMark:      '#000', //'#e0f',
+  minMark:      '#02c',
+};
+
+var hbTest = new HarfBuzzForceFieldClass();
+window.hbTest = hbTest;
+
+function glyphToMyPath(font, glyphId) {
+  var ptr = font.ptr;
+  var exports = harfBuzzModule.wasmExports;
+  var addFunction = harfBuzzModule.addFunction;
+}
+
+var perf = []
+function perfStart() {
+  perf = [];
+}
+
+function perfAdd(id) {
+  perf.push({txt:id, now:performance.now()});
+}
+
+function perfText() {
+  const size = perf.length;
+  var i = 0;
+  var pnow = perf[0].now;
+  var txt = '';
+  while (i < size) {
+    txt += (perf[i].now - pnow).toFixed(3) + ' ' + perf[i].txt + '\r\n';
+    pnow = perf[i].now;
+    i++;
+  }
+  return txt;
+}
+
+function updateValues() {
+  hbTest.freeGlyphValues();
+  hbTest.freeGlyphCache();
+  if (showJSON.checked) {
+    updateJSON();
+  } else {
+    hbTest.setBase(baseNear.value, baseFar.value);
+    hbTest.setMark(markNear.value, markNearBase.value, markFar.value);
+    baseNearValue.innerText     = baseNear.value;
+    baseFarValue.innerText      = baseFar.value;
+    markNearValue.innerText     = markNear.value;
+    markNearBaseValue.innerText = markNearBase.value;
+    markFarValue.innerText      = markFar.value;    
+  }
+  //test(inputText.value);
+  var res = processWord(inputText.value, true);
+  wordRating.innerText = res.rating;
+}
+
+function getOldOrNew(theOld, theNew) {
+  if (isExists(theOld))
+    return theOld;
+  else
+    return theNew;
+}
+
+function updateJSON() {
+  var data;
+  jsonError.innerText = '';
+  try {
+    data = JSON5.parse(jsonText.value);
+  } catch (e) {
+    jsonError.innerText = e;
+    return;
+  }
+  var fontCompare = null;
+  hbTest.freeGlyphValues();
+  hbTest.freeGlyphCache();
+  for (let key in data) {
+    if (key === 'base') {
+      const n = getOldOrNew(data.base.min, data.base.n);
+      const f = getOldOrNew(data.base.max, data.base.f);
+      hbTest.setBase(n, f);
+    }
+    else
+    if (key === 'mark') {
+      const n  = getOldOrNew(data.mark.min, data.mark.n);
+      const nb = getOldOrNew(data.mark.min, data.mark.nb);
+      const f  = getOldOrNew(data.mark.max, data.mark.f);
+      hbTest.setMark(n, nb, f);
+    }
+    if (key === 'font')
+      fontCompare = data[key];
+    if (key === 'harfbuzz') {
+      hbTest.setScriptLanguage(data[key].script, data[key].language);      
+    }
+    else {
+      if (!isNaN(key)) {
+        const gid = parseInt(key);
+        const n  = getOldOrNew(data[key].min, data[key].n);
+        const nb = getOldOrNew(data[key].min_base, data[key].nb);
+        const f  = getOldOrNew(data[key].max, data[key].f);
+        hbTest.setGlyphValues(gid, f, n, nb);
+      }
+    }
+  }
+  if (fontCompare) {
+    const name = fontCompare.name;
+    const version = fontCompare.version;
+    if (name && name !== hbTest.fontName.fullName) {
+      jsonError.innerText = `Font name does not match "${name}"! `;
+    } else
+    if (version && version !== hbTest.fontName.version) {
+      jsonError.innerText = `Font version does not match "${version}"!`;
+    }
+  }
+
+  if (!isExists(data.base) || !isExists(data.base.n) || !isExists(data.base.f)) {
+    if (!isExists(data.base) || !isExists(data.base.min) || !isExists(data.base.max)) {
+      jsonError.innerText = `Missing {'base':{'n':..., 'f':...}}'!`;
+    }
+  }
+
+  if (!isExists(data.mark) || !isExists(data.mark.n) || !isExists(data.mark.f) || !isExists(data.mark.nb)) {
+    if (!isExists(data.mark) || !isExists(data.mark.min) || !isExists(data.mark.max) || !isExists(data.mark.min_base)) {
+      jsonError.innerText = `Missing {'mark':{'n':..., 'nb':..., 'f':...}}'!`;
+    }
+  }
+  var res = processWord(inputText.value, true);
+  wordRating.innerText = res.rating;
+}
+
+// Used for colouration of glyphs or clusters
+const glyphColors = ['#bb87e3','#bc6b0e','#57118c','#64902e','#91bbec','#d65e02','#1d5799','#984c11','#271909'];
+
+
+function processWord(word, display) {
+  var wordRating = '';
+  var buffer = hb.createBuffer();
+  if (display) {
+    hbTest.startSVG();
+    perfStart();
+    perfAdd('start');
+  }
+  buffer.addText(word);
+  buffer.guessSegmentProperties();
+  if ((typeof hbTest.script === 'string') && (hbTest.script.length > 0))
+    buffer.setScript(hbTest.script || 'latn');
+  if ((typeof hbTest.language === 'string') && (hbTest.language.length > 0))
+    buffer.setLanguage(hbTest.language);
+  if (display)
+    perfAdd('shaped');
+
+  var attachments = shapeAndFindAttachments(hbTest.font, buffer);
+
+  const font = hbTest.font;
+  var result = buffer.json(font);
+  attachments = unifyAttachmentsOrder(attachments, result);
+
+  const { Paths64, Xor64, Intersect64, Union64, TranslatePaths64, FillRule, IsPositive64 } = Clipper2Z;
+  var pos = {x:0, y:0};
+
+  result.forEach(function(x) {
+    var paths = hbTest.glyphToPolyline(x.g);
+    const px = pos.x + x.dx;
+    const py = pos.y + x.dy;
+    x.pathGlyph = paths.cpaths.translateToNewCPaths64(px, py);
+    x.pathNear = paths.cpathsNear.translateToNewCPaths64(px, py);
+    x.pathFar = paths.cpathsFar.translateToNewCPaths64(px, py);
+    if (paths.cpathsNearBase) {
+      x.pathNearBase = paths.cpathsNearBase.translateToNewCPaths64(px, py);
+    }
+    pos.x += x.ax;
+    pos.y += x.ay;
+  });
+  if (display) perfAdd('first pass');
+
+  var overallFar = new CPaths64();
+  var overallMarks = new CPaths64();
+  var overallNear = new CPaths64();
+  var overallNearBase = new CPaths64();
+  var collisions = new CPaths64();
+  var collisionCounts = {};
+
+  pos.x = 0;
+  pos.y = 0;
+  var colourIndex = 0;
+  var n=0;  // the result index
+  const solidColour = colourSolid.checked;
+  const showGids = cbShowGids.checked;
+
+  result.forEach(function(x) {
+    colourIndex++;
+    var colorText = glyphColors[colourIndex%glyphColors.length];
+    var paths = hbTest.glyphToPolyline(x.g);
+    const px = pos.x + x.dx;
+    const py = pos.y + x.dy;
+
+    const pathGlyph = x.pathGlyph;
+    const pathNear  = x.pathNear;
+    const pathFar   = x.pathFar;
+
+    var id = `n${n}_g${x.g}_c${x.cl}`;
+    var ismark = false;
+
+    if (hbTest.isMarkClass(x.g) /*fontdata.marks[x.g]*/) {
+      ismark = true;
+      overallMarks.unionWith(pathFar);
+      if (display) {
+        var color = colorText;
+        if (solidColour) color = colors.glyphMark;
+        overallNear.unionWith(pathNear);
+        if (x.pathNearBase) {
+          overallNearBase.unionWith(x.pathNearBase);
+        }
+        hbTest.drawCPaths(pathGlyph, null, {
+            id:id,
+            gid:x.g,
+            fillColor:color, fillOpacity:0.5,
+            strokeColor:colors.glyphMark, strokeOpacity:0.8, strokeWidth:8});
+      }
+    } else {
+      overallFar.unionWith(pathFar);
+      if (display) {
+        var color = colorText;
+        if (solidColour) color = colors.glyphBase;
+        overallNear.unionWith(pathNear);
+        hbTest.drawCPaths(pathGlyph, null, {
+            id:id,
+            gid:x.g,
+            fillColor:color, fillOpacity:0.5,
+            strokeColor:colors.glyphBase, strokeOpacity:0.8, strokeWidth:8});
+      }
+    }
+    // show GID
+    if (display && showGids) {
+      const fontSize = 100;
+      const yOfs = pos.y + 660 + (n % 4) * 110;
+      const xOfs = pos.x + 0; 
+      var gidtype = '';
+      if (ismark) gidtype='\'';     
+      hbTest.svgData += `<text font-size="${fontSize}" x="${xOfs}" y="${yOfs}" fill="${colorText}">${gidtype}${x.g}</text>`;
+    }
+    pos.x += x.ax;
+    pos.y += x.ay;
+    n++;
+  });
+  if (display) {
+    perfAdd('geometry+draw');
+    window.hbdebug = {
+      attachments: attachments,
+      result: result,
+      perf:perf,
+    };
+  }
+
+  var i1 = 0;
+  var c1 = result.length;
+  while (i1 < c1) {
+    const x1 = result[i1];
+    var i2 = i1 + 1;
+    while (i2 < c1) {
+      const x2 = result[i2];
+      const isCursive = attachments.cursives.findPair(i1, i2);
+      if (isCursive) {
+        // Ignore any collision between two cursive glyphs of the same 'set'
+      } else {
+        var collision;
+        const markSet = attachments.marks.findEither(i1, i2);
+        // markSet[0] = mark; markSet[1] = base
+        // NOTE: This juggle is because we're not sure which way round the indices are
+        if (markSet && 
+            (
+              (i1 == markSet[1]) ||
+              (i2 == markSet[1]) ||
+              attachments.cursives.findPair(i1, markSet[1]) ||
+              attachments.cursives.findPair(i2, markSet[1])
+            )
+           ) {
+          // Going to use the Mark's glyph - not it's near-field
+          if (i1 == markSet[0]) {
+            // Mark to Base
+            if (x1.pathNearBase)
+              collision = x1.pathNearBase.collisionCPath(x2.pathNear);
+            else
+              collision = x1.pathGlyph.collisionCPath(x2.pathNear);
+          } else {
+            // Base to Mark
+            if (x2.pathNearBase)
+              collision = x1.pathNear.collisionCPath(x2.pathNearBase);
+            else
+              collision = x1.pathNear.collisionCPath(x2.pathGlyph);
+          }
+        } else {
+          collision = x1.pathNear.collisionCPath(x2.pathNear);
+        }
+
+        if (collision) {
+          //if (display)
+            collisions.unionWith(collision);
+          if (hbTest.isMarkClass(x1.g) /*fontdata.marks[x1.g]*/) {
+            if (hbTest.isMarkClass(x2.g) /*fontdata.marks[x2.g]*/)
+              collisionCounts.colMarkToMark = (collisionCounts.colMarkToMark || 0) + 1;
+            else
+              collisionCounts.colMarkToBase = (collisionCounts.colMarkToBase || 0) + 1;
+          } else {
+            if (hbTest.isMarkClass(x2.g) /*fontdata.marks[x2.g]*/)
+              collisionCounts.colMarkToBase = (collisionCounts.colMarkToBase || 0) + 1;
+            else
+              collisionCounts.colBaseToBase = (collisionCounts.colBaseToBase || 0) + 1;
+          }
+          collision.freePath();
+
+          // Try and see if we have a collision with the glyphs too
+          collision = x1.pathGlyph.collisionCPath(x2.pathGlyph);
+          if (collision) {
+            collisionCounts.colGlyph = (collisionCounts.colGlyph || 0)+1;
+            collision.freePath();
+          }
+        }
+      }
+      i2++;
+    }
+    i1++;
+  }
+  
+  if (display) perfAdd('collision done');
+
+  var islandsBase = overallFar.countIslands();
+  overallFar.unionWith(overallMarks);
+  var islandsAll = overallFar.countIslands();
+
+  if (display) {
+    hbTest.drawCPaths(overallNear, null, {strokeColor:colors.minBase, strokeWidth:8});
+    hbTest.drawCPaths(overallNearBase, null, {strokeColor:colors.minMarkBase, strokeWidth:6});
+    hbTest.drawCPaths(overallFar, null, {strokeColor:colors.maxBase, strokeWidth:8});
+    hbTest.drawCPaths(collisions, null, {
+      fillColor:colors.collision, fillOpacity:0.8,
+      strokeColor:colors.collision, strokeOpacity:1.0, strokeWidth:20});
+    perfAdd('islands+draw');
+  }
+
+  //\\const colSize = collisions.paths64.size();
+  //\\if (colSize > 0)
+  var txt = '';
+  {
+    if (collisionCounts.colGlyph > 0) {
+      wordRating += 'GG'+collisionCounts.colGlyph+',';
+      txt += 'GG'+collisionCounts.colGlyph+' ';
+    }
+    if (collisionCounts.colBaseToBase > 0) {
+      wordRating += 'cb'+collisionCounts.colBaseToBase+',';
+      txt += 'BB:'+collisionCounts.colBaseToBase+' ';
+    }
+    if (collisionCounts.colMarkToBase > 0) {
+      wordRating += 'cx'+collisionCounts.colMarkToBase+ ',';
+      txt += 'MB:'+collisionCounts.colMarkToBase+' ';
+    }
+    if (collisionCounts.colMarkToMark > 0) {
+      wordRating += 'cm'+collisionCounts.colMarkToMark+',';
+      txt += 'MM:'+collisionCounts.colMarkToMark;
+    }
+    const { AreaPaths64 } = Clipper2Z;
+    const collisionArea = Math.round(AreaPaths64(collisions.paths64));
+    if (collisionArea > 0) {
+      wordRating += 'ca:'+collisionArea+',';
+      txt += ' Area:'+collisionArea;
+    }
+    if (display) {
+      colNotify.innerText = txt;
+    }
+  }
+
+  txt = '';
+  if (islandsBase > 1) {
+    if (islandsAll == 1) {
+      wordRating += 'ok,';
+      txt += 'Ok? ';
+      collisionCounts.okMaybe = 1;
+    }
+    wordRating += 'fb,';
+    txt += 'Base ';
+    collisionCounts.farBase = 1;
+  }
+  if (islandsAll > islandsBase) {
+    wordRating += 'fm,';
+    txt += 'Marks';
+    collisionCounts.farMark = 1;
+  }
+  if (display)
+    farNotify.innerText = txt;
+
+  // Free up memory...
+  overallFar.freePath();
+  overallMarks.freePath();
+  overallNear.freePath();
+  overallNearBase.freePath();
+  collisions.freePath();
+  result.forEach(function(x) { 
+    if (isAssigned(x.pathGlyph))    x.pathGlyph.freePath();
+    if (isAssigned(x.pathFar))      x.pathFar.freePath();
+    if (isAssigned(x.pathNear))     x.pathNear.freePath();
+    if (isAssigned(x.pathNearBase)) x.pathNearBase.freePath();
+  });
+  buffer.destroy();
+
+  wordRating = wordRating.replace(/,\s*$/,'');  // remove last comma
+  if (display) {
+    perfAdd('done');
+    hbTest.renderSVG();
+  }
+  return {
+    rating: wordRating,
+    counts: collisionCounts,
+  };
+}
+
+//var wordlistFilename = '';
+var wordList = [];
+
+//------------------------------
+// Drag and drop functions
+//------------------------------
+////------------------------------
+// Drag and drop utilities
+//------------------------------
+function cancel(e) {e.stopPropagation();e.preventDefault();}
+function patchDragDrop(ele, foo) {
+  //const ele = document.getElementById(id);
+  ele.addEventListener('dragover', function(e) {
+    cancel(e);
+    ele.style.backgroundColor = 'yellow';
+    }, false);
+  ele.addEventListener('dragleave', function(e) {
+    cancel(e);
+    ele.style.backgroundColor = null;
+    }, false);
+  ele.addEventListener('drop', function(e) {
+    cancel(e);
+    const file = e.dataTransfer.files[0];
+    ele.style.backgroundColor = null;
+    foo(file, ele);
+  });
+}
+document.addEventListener('dragover', cancel, false);
+document.addEventListener('dragleave', cancel, false);
+document.addEventListener('drop', cancel, false);
+
+class wordEntryClass {
+  constructor(line) {
+    const tempArray = line.split('\t');
+    this.word = tempArray[0];
+    this.note = tempArray[1] || '';
+    this.checked = false;
+    //??//this.checked = (tempArray[2] === 'x') || (tempArray[2] === 'X'); //??
+  }
+  getWord()     { return this.word; }
+  getChecked()  { return this.checked; }
+  setChecked(isChecked) { this.checked = isChecked; }
+  setNote(txt)  { this.note = txt; }
+  getNote()     { return this.note; }
+  // The line for the check list file output
+  getLine() {
+    var txt = this.word + '\t' + (this.note || '') ;
+    while (txt.endsWith('\t')) {
+      txt = txt.slice(0, txt.length-1);
+    }
+    return txt;
+  }
+}
+
+function buildListFromFileContents(txt)
+{
+  var lines = txt.split(/\r?\n+/g);
+  var tempWordList = [];  // Start empty
+  var i = 0;
+  while (i < lines.length) {
+    const wordEntry = new wordEntryClass(lines[i]);
+    if (wordEntry.getWord().length > 0) {
+      tempWordList.push(wordEntry);
+    }
+    i++;
+  }
+  return tempWordList;
+}
+
+var jsonFilename = '';
+var jsonLastModifiedDate = '';
+
+function handleJsonText(file) {
+  if (!file) return;
+  const fileName = file.name.toLowerCase();
+  if (!fileName.endsWith('.txt') && !fileName.endsWith('.json')) return;
+
+  jsonFilename = fileName;
+  jsonLastModifiedDate = file.lastModifiedDate || '?';
+  showJSON.checked = true;
+  rangeChange();
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var txt = e.target.result;
+    txt = '// '+file.name+'\r\n' + txt;
+    jsonText.value = txt;
+    updateJSON();
+  }
+  reader.readAsText(file);
+}
+
+function handleWordsDrop(file) {
+  if (!file) return;
+  const fileName = file.name.toLowerCase();
+  if (!fileName.endsWith('.txt')) return;
+
+  window.wordlistFilename = '"'+fileName+'"';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var txt = e.target.result;
+    wordList = buildListFromFileContents(txt);
+    wordListDetails.innerText = wordList.length + ' ' + window.wordlistFilename;
+    btnRateWordList.hidden = false;
+  }
+  reader.readAsText(file);
+}
+
+var AbortTheLoop = false;
+
+function AbortReset() {
+  AbortTheLoop = false;
+  AbortButton.hidden = false;
+}
+
+function AbortProgress() {
+  AbortTheLoop = true;
+}
+
+
+// See: https://elplatt.com/javascript-updating-dom-during-long-running-computation
+function doUntil(loop, stopCondition, yieldCondition) {
+    AbortReset();
+    // Wrap function in promise so it can run asynchronously
+    return new Promise((resolve, reject) => {
+
+    // Build outerLoop function to pass to setTimeout
+    let outerLoop = function () {
+      while (true) {
+        // Execute a single inner loop iteration
+        loop();
+
+        if (stopCondition() /*|| AbortTheLoop*/) {
+            // Resolve promise, exit outer loop,
+                        // and do not re-enter
+            AbortButton.hidden = true;
+            resolve();
+            break;
+        } else if (yieldCondition()) {
+            // Exit outer loop and queue up next
+                        // outer loop iteration for next event loop cycle
+            setTimeout(outerLoop, 0);
+            break;
+        }
+        // Continue to next inner loop iteration
+        // without yielding
+      }
+    };
+
+    // Start the first iteration of outer loop,
+    // unless the stop condition is met
+    if (!stopCondition()) {
+        setTimeout(outerLoop, 0);
+    }
+  });
+}
+
+function handleFontUpdate(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.addEventListener("load", function () {
+    window.fontFileName = file.name;
+    loadTheFont(new Uint8Array(reader.result));
+    //updateValues();
+    rangeChange();
+  });
+  reader.readAsArrayBuffer(file);
+}
+
+patchDragDrop(WordsDragDrop, handleWordsDrop);
+patchDragDrop(theFont, handleFontUpdate);
+patchDragDrop(jsonTable, handleJsonText);
+patchDragDrop(rangeChoice, handleJsonText);
+patchDragDrop(showJSON, handleJsonText);
+patchDragDrop(slidersTable, handleJsonText);
+
+const updateInterval = 123;
+
+function updateStatusMessage(i, total, checked, counts) {
+  if (i <= 0)
+    statusUpdate.innerHTML = '-';
+  else
+    statusUpdate.innerHTML = '<div><font color="red">'+i + '/'+ total+' ('+checked+')</font></div>';
+
+  var ol = Object.entries(counts).sort();
+  var txt = '<table border=0 width="60%">';
+  ol.forEach(function(e) {
+    txt += '<tr><td width="50%">'+e[0] + '</th><td align="right">' + e[1]+'</td><tr>';
+  });
+  txt += '</table>';
+  const overallTime = (Date.now() - loopStarted) / 1000.0;
+  var rateWords;
+  if (i < 0)
+    rateWords = Math.round(total / overallTime);
+  else
+    rateWords = Math.round(i / overallTime);
+  txt += `</br>Time: ${overallTime}s (${rateWords}/s)`;
+  statusCounts.innerHTML = txt;
+}
+
+class ElapsedTimer {  
+  constructor(t) {
+    this.count = 0;
+    this.max = t;
+  }
+  elapsed() {
+    if (this.count++ > this.max) {
+      this.count = 0;
+      return true;
+    }
+    return false;
+  }
+}
+
+function setDisableAllDivElements(divName, disableValue) {
+  // This will disable all the children of the div
+  var nodes = document.getElementById(divName).getElementsByTagName('*');
+  for(var i = 0; i < nodes.length; i++){
+       nodes[i].disabled = disableValue;
+  }
+}
+
+var loopStarted;
+
+function rateWordList() {
+  const total = wordList.length;
+  var i = 0;
+  var checkcount = 0;
+  var et = new ElapsedTimer(updateInterval);
+  const stopCondition = () => (i >= total) || AbortTheLoop;
+  const yieldCondition = function() {
+    return et.elapsed();
+    /*
+    if (i % updateInterval != 0) return false;
+    return true;
+    */
+  };
+
+  var countsOverall = {};
+  loopStarted = Date.now();
+
+  setDisableAllDivElements('slidersDiv', true);
+  setDisableAllDivElements('jsonDiv', true);
+  btnFCWL.disabled = true;
+
+  const loop = () => {
+    var word = wordList[i].getWord();
+    var res = processWord(word);
+    wordList[i].setNote(res.rating);
+    if (res.rating != '') {
+      wordList[i].setChecked(true);
+      checkcount++;
+    } else {
+      wordList[i].setChecked(false);
+    }
+    for (var key in res.counts) {
+      countsOverall[key] = (countsOverall[key] || 0) + res.counts[key];
+    }
+    i++;
+    if (yieldCondition()) {
+      updateStatusMessage(i, total, checkcount, countsOverall);
+    }
+    if (stopCondition()) {
+      //console.log(wordList);
+      updateStatusMessage(-1, total, checkcount, countsOverall);
+      saveListButton.hidden = false;
+      setDisableAllDivElements('slidersDiv', false);
+      setDisableAllDivElements('jsonDiv', false);
+      btnFCWL.disabled = false;
+    }
+  }
+  doUntil(loop, stopCondition, yieldCondition);
+}
+
+function randomWord(isgood) {
+  var tries = 1000;
+  const size = wordList.length;
+  if (size == 0) return;
+  while (tries > 0) {
+    const i = Math.floor(Math.random() * size);
+    if (i < 0) i = 0;
+    if (i >= size) i = size - 1;
+    const we = wordList[i];
+    if ((isgood && !we.getChecked()) || (!isgood && we.getChecked())) {
+      //console.log(isgood, we);
+      inputText.value = we.getWord();
+      updateValues();
+      return;
+    }
+    tries--;
+  }
+}
+
+function DateTimeForFilename() {
+  //  012345678901234567890123
+  // '2024-11-07T14:55:03.791Z'
+  var d = new Date().toJSON();
+  return d.slice(0,4)+d.slice(5,7)+d.slice(8,10)+'_'+
+         d.slice(11,13)+d.slice(14,16)+d.slice(17,19);
+}
+
+function saveResults() {
+  var txt = '';
+  var i = 0;
+
+  txt += '\t########################################\r\n';
+  txt += '\t#           Font: \t'+hbTest.fileDescription+'\r\n';
+  txt += '\t#           JSON: \t'+jsonFilename+' ('+jsonLastModifiedDate+')\r\n';
+  txt += '\t#      Base near: \t'+hbTest.baseNear+'\r\n';
+  txt += '\t#       Base far: \t'+hbTest.baseFar+'\r\n';
+  txt += '\t#      Mark near: \t'+hbTest.markNear+'\r\n';
+  txt += '\t# Mark near base: \t'+hbTest.markNearBase+'\r\n';
+  txt += '\t#       Mark far: \t'+hbTest.markFar+'\r\n';
+  txt += '\t########################################\r\n';
+  txt += '\t#          Stats:  \t'+statusCounts.innerText.replace(/[\r\n]+/g, '; ')+'\r\n';
+  txt += '\t########################################\r\n';
+
+  const size = wordList.length;
+  while (i < size) {
+    const we = wordList[i];
+    if (we.getChecked()) {
+      txt = txt + we.getLine()+'\n';
+    }
+    i++;
+  }
+  var bb = new Blob([txt], {type: 'text/plain;charset=utf-8'});
+  var a = document.createElement('a');
+  a.download = 'FontForceField.'+DateTimeForFilename()+'.txt';
+  a.href = window.URL.createObjectURL(bb);
+  a.target='_blank';
+  a.click();
+}
+
+window.updateValues = updateValues;
+window.updateJSON = updateJSON;
+window.rateWordList = rateWordList;
+window.saveResults  = saveResults;
+window.AbortProgress = AbortProgress;
+window.randomWord = randomWord;
+window.opentype = opentype;
+window.Layout = Layout;
+
+</script>
+
+</br>
+</br>2025-06-12
+</br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
+</html>
