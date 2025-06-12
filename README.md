@@ -81,4 +81,4 @@ Suggestions:
 ```
 
 # Technical Details
-Please see: https://github.com/MattMatic/font-force-field/TECHNICAL.md
+Please see: https://github.com/MattMatic/font-force-field/blob/main/TECHNICAL.md
