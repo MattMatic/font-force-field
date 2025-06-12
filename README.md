@@ -1,7 +1,7 @@
 # font-force-field: Font Force Field Tool
 Web based glyph collision and distance tool for complex OpenType fonts.
 
-This tool is completely offline (i.e. nothing is sent to the cloud).
+This tool is **completely offline** (i.e. nothing is sent to the cloud).
 
 Having used Simon Cozen's excellent `collidoscope` project, but also been
 badly bitten by Python library version nightmares, this was created as an
