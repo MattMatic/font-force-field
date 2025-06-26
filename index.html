@@ -332,6 +332,7 @@ function onResourcesLoaded() {
     inputText.value = "\u0626\u0626\u0632\u0626\u06cc";
     loadTheFont(new Uint8Array(blob));
     updateValues();
+    acquireFontAndLists(window.opener);
   });
 }
 
@@ -1137,7 +1138,7 @@ function updateJSON() {
     if (key === 'font')
       fontCompare = data[key];
     if (key === 'harfbuzz') {
-      hbTest.setScriptLanguage(data[key].script, data[key].language);      
+      hbTest.setScriptLanguage(data[key].script, data[key].language);
     }
     else {
       if (!isNaN(key)) {
@@ -1681,6 +1682,38 @@ function setDisableAllDivElements(divName, disableValue) {
   }
 }
 
+function acquireFontAndLists(opener) {
+  if (!window.opener) return;
+  const w = window.opener;
+  if (!isExists(w.api) || !isExists(w.api.transfer)) return;
+  const xfer = w.api.transfer;
+  updateTransfer(xfer);
+}
+
+function updateTransfer(xfer) {
+  if (!xfer) return;
+  if (isExists(xfer.fontBlob1)) {
+    loadTheFont(xfer.fontBlob1);
+  }
+  if (isExists(xfer.checkList) && (xfer.checkList.length > 0)) {
+    const size = xfer.checkList.length;
+    var tempList = [];
+    for (let i=0; i<size; i++) {
+      const word = xfer.checkList[i];
+      const wordEntry = new wordEntryClass(word);
+      tempList.push(wordEntry);
+    }
+    wordList = tempList;
+    wordListDetails.innerText = wordList.length + ' ' + '(sync)';
+    btnRateWordList.hidden = false;
+
+  }
+  if ((xfer.script !== null) || (xfer.language !== null)) {
+    hbTest.setScriptLanguage(xfer.script || '', xfer.language || '');
+  }
+  updateValues();
+}
+
 var loopStarted;
 
 function rateWordList() {
@@ -1800,10 +1833,11 @@ window.AbortProgress = AbortProgress;
 window.randomWord = randomWord;
 window.opentype = opentype;
 window.Layout = Layout;
+window.updateTransfer = updateTransfer;
 
 </script>
 
 </br>
-</br>2025-06-12
+</br>2025-06-26
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
