@@ -15,6 +15,10 @@ body {
 .tableColumnHead {
   background-color: #ddb;
 }
+table, th, td {
+  border-collapse: collapse;
+  padding: 2px;
+}
 </style>
 <script type="text/javascript" src="js/hb.js"></script> <!-- Module - REQUIRED -->
 <script type="text/javascript" src="js/hbjs.js"></script>
@@ -26,15 +30,15 @@ body {
 <body>
 <h1>Font Force Field Tool</h1>
 
-<table border=1 width='80%'>
-<tr><td width='70%' valign='top'>
+<table id='tableOptions' width='100%' border=1>
+<tr><td width='60%' valign='top'>
   <table border=0 width='100%'>
     <tr><td width='25%'>Font:</td><td id='theFont'><div id='fontInfo'>-font-</div></td></tr>
   </table>
 </td><td></td>
 </tr>
 <tr><th class='tableColumnHead'>Adhoc Test</th><th class='tableColumnHead'>List Processing</th></tr>
-<tr><td width='70%' valign="top">
+<tr><td valign="top">
   <table border=0 width='100%'>
   <tr><td width='25%'>Text:</td><td><input type="text" style="width:60%" id="inputText" oninput="updateValues();" value="abc"></input></td></tr>
   <tr><td>Ranges:</td><td id='rangeChoice'>
@@ -103,7 +107,15 @@ body {
   <tr><td width='25%'>Word List:</td><td><div id='wordListDetails'>(drag .txt. file here)</div> <button hidden onclick='rateWordList();' id='btnRateWordList'>Rate!</button> <button onclick='saveResults();' hidden id='saveListButton'>Save List</button></td></tr>
   <tr><td>Progress:</td><td><div id='statusUpdate'>-</div> <button onclick='AbortProgress();' id='AbortButton' hidden>Abort!</button></td></tr>
   <tr><td>Stats:</td><td><div id='statusCounts'>-</div></td></tr>
-  <tr><td>Random word:</td><td><button onclick='randomWord(false);'>Failed</button><button onclick='randomWord(true);'>Passed</button></td></tr>
+  <tr><td>Word:</td><td>
+    <button onclick='randomWord(false);'>Failed</button>
+    <button onclick='randomWord(true);'>Passed</button></br>
+    <button onclick='pickWord(0);'  accesskey='1'>First (Alt-1)</button>
+    <button onclick='pickWord(-1);' accesskey='2'>Prev (Alt-2)</button>
+    <button onclick='pickWord(1);'  accesskey='3'>Next (Alt-3)</button>
+    <button onclick='pickWord(9);'  accesskey='4'>Last (Alt-4)</button>
+    </br><span id='wordIndex'></span>
+  </td></tr>
   <tr><td>Sync:</td><td>
     <button onclick='openFontCompareWordListTool();' id='btnFCWL'>Font Compare Word List</button>
   </td></tr>
@@ -1695,6 +1707,7 @@ function updateTransfer(xfer) {
   if (isExists(xfer.fontBlob1)) {
     loadTheFont(xfer.fontBlob1);
   }
+  inputText.value = 'abc';
   if (isExists(xfer.checkList) && (xfer.checkList.length > 0)) {
     const size = xfer.checkList.length;
     var tempList = [];
@@ -1706,7 +1719,7 @@ function updateTransfer(xfer) {
     wordList = tempList;
     wordListDetails.innerText = wordList.length + ' ' + '(sync)';
     btnRateWordList.hidden = false;
-
+    inputText.value = wordList[0].getWord();
   }
   if ((xfer.script !== null) || (xfer.language !== null)) {
     hbTest.setScriptLanguage(xfer.script || '', xfer.language || '');
@@ -1766,6 +1779,19 @@ function rateWordList() {
   doUntil(loop, stopCondition, yieldCondition);
 }
 
+let pickWordIndex = 0;
+
+function loadPickWord(i) {
+  const size = wordList.length;
+  const we = wordList[i];
+  if (i < 0) i = 0;
+  if (i >= size) i = size - 1;
+  inputText.value = we.getWord();
+  wordIndex.innerText = '#'+(i+1);
+  pickWordIndex = i;
+  updateValues();
+}
+
 function randomWord(isgood) {
   var tries = 1000;
   const size = wordList.length;
@@ -1776,13 +1802,21 @@ function randomWord(isgood) {
     if (i >= size) i = size - 1;
     const we = wordList[i];
     if ((isgood && !we.getChecked()) || (!isgood && we.getChecked())) {
-      //console.log(isgood, we);
-      inputText.value = we.getWord();
-      updateValues();
+      loadPickWord(i);
       return;
     }
     tries--;
   }
+}
+
+function pickWord(which) {
+  const size = wordList.length;
+  let i = pickWordIndex;
+  if (which === 0) i = 0;
+  else if (which === -1) i = pickWordIndex - 1;
+  else if (which === 1) i = pickWordIndex + 1;
+  else if (which === 9) i = size - 1;
+  loadPickWord(i);
 }
 
 function DateTimeForFilename() {
@@ -1831,6 +1865,7 @@ window.rateWordList = rateWordList;
 window.saveResults  = saveResults;
 window.AbortProgress = AbortProgress;
 window.randomWord = randomWord;
+window.pickWord = pickWord;
 window.opentype = opentype;
 window.Layout = Layout;
 window.updateTransfer = updateTransfer;
@@ -1838,6 +1873,6 @@ window.updateTransfer = updateTransfer;
 </script>
 
 </br>
-</br>2025-06-26
+</br>2025-07-03
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
