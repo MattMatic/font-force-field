@@ -1707,7 +1707,6 @@ function updateTransfer(xfer) {
   if (isExists(xfer.fontBlob1)) {
     loadTheFont(xfer.fontBlob1);
   }
-  inputText.value = 'abc';
   if (isExists(xfer.checkList) && (xfer.checkList.length > 0)) {
     const size = xfer.checkList.length;
     var tempList = [];
@@ -1719,8 +1718,8 @@ function updateTransfer(xfer) {
     wordList = tempList;
     wordListDetails.innerText = wordList.length + ' ' + '(sync)';
     btnRateWordList.hidden = false;
-    inputText.value = wordList[0].getWord();
   }
+  loadPickWord(0);
   if ((xfer.script !== null) || (xfer.language !== null)) {
     hbTest.setScriptLanguage(xfer.script || '', xfer.language || '');
   }
@@ -1783,6 +1782,11 @@ let pickWordIndex = 0;
 
 function loadPickWord(i) {
   const size = wordList.length;
+  if (size === 0) {
+    inputText.value = 'abc';
+    wordIndex.innerText = '';
+    return;
+  }
   const we = wordList[i];
   if (i < 0) i = 0;
   if (i >= size) i = size - 1;
