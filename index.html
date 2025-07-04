@@ -978,6 +978,7 @@ class HarfBuzzForceFieldClass {
     this.bar = {};
     this.bar.area = barObject.area; // An array of either y1,y2 or x1,y1,x2,y2
     this.bar.gids = barObject.gids; // A plain array of gids
+    this.bar.far  = barObject.far;  // Whether to include the bar in the far 
 
     if (this?.bar?.cpaths64)
       this.bar.cpaths64.destroy();
@@ -1421,8 +1422,8 @@ function processWord(word, display) {
             strokeColor:colors.glyphMark, strokeOpacity:0.8, strokeWidth:8});
       }
     } else {
-      if (hbTest.glyphInBars(x.g))
-        overallFar.unionWith(gs.path('farBar'));  //????
+      if (!hbTest.bar?.far && hbTest.glyphInBars(x.g))
+        overallFar.unionWith(gs.path('farBar'));
       else
         overallFar.unionWith(gs.path('far'));
       if (display) {

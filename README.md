@@ -59,42 +59,43 @@ Suggestions:
 
 ```json
 {
-  'font':{
-    'name':'MyFontName',
-    'version':'Exact Version'
+  font:{
+    name:'MyFontName',
+    version:'Exact Version'
   },  // Warning if different
 
   // 'n'  = Near
   // 'f'  = Far
   // 'nb' = Near Base (mark to glyph or cursive group)
 
-  'base':{'n':45, 'f':95},
+  base:{n:45, f:95},
 
-  'mark':{'n':10, 'nb':5, 'f':100},
+  mark:{n:10, nb:5, f:100},
 
-  // GID specific
-  '643':{'n':'120%','f':'200%'},  // Using percentages
-  '644':{'n':15,    'f':50},      // Explicit values
+  // GID specific (use quotes around numbers)
+  '643':{n:'120%',f:'200%'},  // Using percentages
+  '644':{n:15,    f:50},      // Explicit values
 
-  '454':{'n':'80%', 'nb':'50%', 'f':40},  // Mixed. `nb` = mark-to-base near field
+  '454':{n:'80%', nb:'50%', f:40},  // Mixed. `nb` = mark-to-base near field
 
   // For Indic scripts with joining top bar
-  'bar' : [
+  bar : [
     {
       // The area(s) can be either horizontal bars, or rectangles.
       // Several areas can be defined.
       // Only GIDs in this set remove the 'area' from collision checks
-      'area': [
+      area: [
         [600, 650],               // exclusion between y=600 and y=650
         [50, 300, 80, 400],       // Rectangle (50, 300) - (80, 400)
       ],
-      'gids': [56, 58, 70, 100],  // GIDs that are in the 'bar' set
+      gids: [56, 58, 70, 100],  // GIDs that are in the 'bar' set
+      far: false,                 // false=bar is not in the far, true=bar included in far
     },
   ],
 
   // Array of arrays for GIDs that are allowed to overlap
   // Useful for Indic scripts with non-cursive glyphs that overlap in areas other than the 'bar' area
-  'overlaps': [                   
+  overlaps: [                   
     [56, 59, 61],                 // i.e. 56 cannot overlap 57
     [57, 63, 75, 85],
   ],
