@@ -333,7 +333,8 @@ function loadTheFont(blob) {
 }
 
 function onResourcesLoaded() {
-  var fontName = 'samples/Gulzar-Regular-1.002.ttf';
+  //var fontName = 'samples/Gulzar-Regular-1.002.ttf';
+  var fontName = 'samples/NotoSansDevanagari-Regular.ttf';
   fetch(fontName).then(function (res) {
     return res.arrayBuffer();
   }).then(function (blob) { // can be used without our wrapper
@@ -341,7 +342,8 @@ function onResourcesLoaded() {
     //inputText.value = "\u0631\u06cc\u0644\u062c\u06cc\u0648";
     //inputText.value = "\u063a\u06cc\u0631\u0646\u0641\u0639";
     //inputText.value = "\u062a\u0644";
-    inputText.value = "\u0626\u0626\u0632\u0626\u06cc";
+    //inputText.value = "\u0626\u0626\u0632\u0626\u06cc"; //Urdu
+    inputText.value = "\u0915\u094b\u0908\u0020\u0938\u0932\u093e\u0939\u0020\u0939\u0948"
     loadTheFont(new Uint8Array(blob));
     updateValues();
     acquireFontAndLists(window.opener);
@@ -376,7 +378,7 @@ class CPaths64 {
     if (isAssigned(this.paths64)) {
       this.paths64.clear();
       this.paths64.delete();
-      delete this.paths64;      
+      delete this.paths64;
     }
   }
   // Iterate through the paths and each path to find bounding box
@@ -401,9 +403,9 @@ class CPaths64 {
     this.updateWidthHeight();
   }
   // Update just the bounding box width and height
-  updateWidthHeight() {    
+  updateWidthHeight() {
     this.bbox.width  = (this.bbox.x.max - this.bbox.x.min);
-    this.bbox.height = (this.bbox.y.max - this.bbox.y.min);    
+    this.bbox.height = (this.bbox.y.max - this.bbox.y.min);
   }
   // Return the bound box
   getBoundingBox() {
@@ -519,6 +521,12 @@ class CPaths64 {
     this.freePath();
     this.setPaths64(res);
   }
+  subtract(cp) {
+    const { Difference64, FillRule } = Clipper2Z;
+    var res = Difference64(this.paths64, cp.paths64, FillRule.NonZero);
+    this.freePath();
+    this.setPaths64(res);
+  }
   // Count the positive paths in the set
   // (Used for finding 'far' glyphs)
   countIslands() {
@@ -561,6 +569,51 @@ class CPaths64 {
   }
 }
 
+class GlyphSet {
+  constructor(gid, cpaths64) {
+    this.gid = gid;
+    this.paths = {};
+    this.paths.glyph = cpaths64;
+  }
+  destroy() {
+    // Iterate through this.paths and destroy each
+    for (let id in this.paths) {
+      this.paths[id].destroy();
+    }
+  }
+  add(id, cpaths64) {
+    if (this.paths[id]) this.paths[id].destroy();
+    this.paths[id] = cpaths64;
+  }
+  addInflated(id, amount) {
+    let p = this.paths.glyph.inflateToNewCPaths64(amount);
+    this.add(id, p);
+    return p;
+  }
+  getGlyphNewCPaths64() {
+    let p = this.paths.glyph.inflateToNewCPaths64(0);
+    return p;
+  }
+  path(id) {
+    let p = this.paths[id];
+    return p;
+  }
+  glyph() {
+    return this.paths.glyph;
+  }
+  translateToNewGlyphSet(x, y) {
+    let res = new GlyphSet(this.gid, undefined);
+    for (let id in this.paths) {
+      const p = this.paths[id];
+      res.add(id, p.translateToNewCPaths64(x, y));
+    }
+    return res;
+  }
+  has(id) {
+    return typeof this.paths[id] === 'object';
+  }
+}
+
 class HarfBuzzForceFieldClass {
   constructor() {
     this.glyphs = {};
@@ -569,7 +622,7 @@ class HarfBuzzForceFieldClass {
   }
   destroy() {
     this.freeFont();
-    delete(this.fontBlob);    
+    delete(this.fontBlob);
   }
   freeFontBlob() {
     this.freeFont();
@@ -593,10 +646,7 @@ class HarfBuzzForceFieldClass {
     if (isAssigned(this.glyphs) && (this.glyphs.length>0)) {
       Object.keys(this.glyphs).forEach(function(k) {
         const e = this.glyphs[k];
-        e.cpaths.freePath();
-        e.cpathsNear.freePath();
-        if (e.cpaths.cpathsNearBase) c.cpathsNearBase.freePath();
-        e.cpathsFar.freePath();
+        e.destroy();
       });
     }
     this.glyphs = {};
@@ -656,8 +706,8 @@ class HarfBuzzForceFieldClass {
   setGlyphValues(gid, far, near, nearBase) {
     this.glyphValues[gid] = {
       far:far,
-      near:near, 
-      nearBase:nearBase, 
+      near:near,
+      nearBase:nearBase,
     };
   }
   getGlyphValues(gid) {
@@ -804,11 +854,21 @@ class HarfBuzzForceFieldClass {
       const nearInflate = gb.near;  // Overlaps = too close
       const farInflate  = gb.far;   // No Overlaps = too far
 
-      paths.cpathsNear = paths.cpaths.inflateToNewCPaths64(nearInflate);
-      paths.cpathsFar  = paths.cpaths.inflateToNewCPaths64(farInflate);
-      if ((typeof(gb.nearBase) !== 'undefined') && (gb.nearBase !== null))
-        paths.cpathsNearBase = paths.cpaths.inflateToNewCPaths64(gb.nearBase);
-      this.glyphs[glyphId] = paths; // Result cached in this object
+      let gs = new GlyphSet(glyphId, cpaths64);
+      gs.addInflated('near', nearInflate);
+      gs.addInflated('far',  farInflate);
+      if ((typeof(gb.nearBase) !== 'undefined') && (gb.nearBase !== null)) {
+        gs.addInflated('nearBase',  gb.nearBase);
+      }
+      if (this.glyphInBars(glyphId)) {
+        const bar = hbTest.getBarCPath();
+        let p = gs.getGlyphNewCPaths64();
+        p.subtract(bar);
+        let pi = p.inflateToNewCPaths64(nearInflate);
+        p.setPaths64(pi.paths64);
+        gs.add('nearBar', p);
+      }
+      this.glyphs[glyphId] = gs; // Result cached in this object
     }
     return this.glyphs[glyphId];
   }
@@ -852,7 +912,7 @@ class HarfBuzzForceFieldClass {
     }
     if (settings.mixBlendMode !== 'normal')
       this.svgData +=';mix-blend-mode:\''+settings.mixBlendMode+'\''
-    
+
     this.svgData += '" d="';
     const size = ps64.size();
     for (let i=0;i<size;i++) {
@@ -906,6 +966,66 @@ class HarfBuzzForceFieldClass {
         );
     }
     return res;
+  }
+  setBar(barObject) {
+    if (this?.bar?.cpaths) this.bar.cpaths64.destroy();
+    this.bar = {};
+    this.bar.area = barObject.area; // An array of either y1,y2 or x1,y1,x2,y2
+    this.bar.gids = barObject.gids; // A plain array of gids
+
+    if (this?.bar?.cpaths64)
+      this.bar.cpaths64.destroy();
+    let p = new CPaths64();
+    for (let i in barObject.area) {
+      const e = barObject.area[i];
+      if (e.length == 2) {
+        const y1 = e[0];
+        const y2 = e[1];
+        p.addPoint(-10000, y1);  
+        p.addPoint(-10000, y1);
+        p.addPoint( 10000, y1);
+        p.addPoint( 10000, y2);
+        p.addPoint(-10000, y2);
+        p.closePath();
+      } else
+      if (e.length == 4) {
+        const x1 = e[0];
+        const y1 = e[1];
+        const x2 = e[2];
+        const y2 = e[3];
+        p.addPoint(x1, y1);
+        p.addPoint(x2, y1);
+        p.addPoint(x2, y2);
+        p.addPoint(x1, y2);
+        p.closePath();
+      }
+    }
+    this.bar.cpaths64 = p;
+  }
+  getBarCPath() {
+    return this.bar.cpaths64;
+  }
+  glyphsInBars(gid1, gid2) {
+    if (!this.bar) return false;
+    if (!this.bar.gids) return false;
+    return (this.bar.gids.includes(gid1) && this.bar.gids.includes(gid2));
+  }
+  glyphInBars(gid) {
+    if (!this.bar) return false;
+    if (!this.bar.gids) return false;
+    return (this.bar.gids.includes(gid));
+  }
+  setOverlaps(overlapsArray) {
+    this.overlaps = overlapsArray;
+  }
+  glyphsOverlap(gid1, gid2) {
+    if (!this.overlaps) return false;
+    for (let set of this.overlaps) {
+      if (set.includes(gid1) && set.includes(gid2)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -1060,7 +1180,7 @@ const colors = {
   minMarkBase:  '#7e7',
   maxBase:      '#8af', //'#08e',
   collision:    '#f44',
-    
+
   maxMark:      '#000', //'#e0f',
   minMark:      '#02c',
 };
@@ -1108,7 +1228,7 @@ function updateValues() {
     baseFarValue.innerText      = baseFar.value;
     markNearValue.innerText     = markNear.value;
     markNearBaseValue.innerText = markNearBase.value;
-    markFarValue.innerText      = markFar.value;    
+    markFarValue.innerText      = markFar.value;
   }
   //test(inputText.value);
   var res = processWord(inputText.value, true);
@@ -1147,10 +1267,34 @@ function updateJSON() {
       const f  = getOldOrNew(data.mark.max, data.mark.f);
       hbTest.setMark(n, nb, f);
     }
+    else
     if (key === 'font')
       fontCompare = data[key];
+    else
     if (key === 'harfbuzz') {
       hbTest.setScriptLanguage(data[key].script, data[key].language);
+    }
+    else
+    if (key === 'bar') {
+      // Indic bar style
+      // `'bar': [
+      //   {
+      //     'area' : [ [y1,y2] ],
+      //     'gids' : [ gid,gid,gid,…],
+      //   },
+      //  ]`
+      hbTest.setBar(data[key]);
+    }
+    else
+    if (key === 'overlaps') {
+      // GIDs that are allowed to overlap
+      // Distinct from the `exclusions` for bar style overlaps
+      // `'overlaps': [
+      //     [gid,gid,…],
+      //     [gid,gid,…],
+      //     …
+      //   ]`
+      hbTest.setOverlaps(data[key]);
     }
     else {
       if (!isNaN(key)) {
@@ -1219,15 +1363,10 @@ function processWord(word, display) {
   var pos = {x:0, y:0};
 
   result.forEach(function(x) {
-    var paths = hbTest.glyphToPolyline(x.g);
+    const gs = hbTest.glyphToPolyline(x.g);
     const px = pos.x + x.dx;
     const py = pos.y + x.dy;
-    x.pathGlyph = paths.cpaths.translateToNewCPaths64(px, py);
-    x.pathNear = paths.cpathsNear.translateToNewCPaths64(px, py);
-    x.pathFar = paths.cpathsFar.translateToNewCPaths64(px, py);
-    if (paths.cpathsNearBase) {
-      x.pathNearBase = paths.cpathsNearBase.translateToNewCPaths64(px, py);
-    }
+    x.gs = gs.translateToNewGlyphSet(px, py);
     pos.x += x.ax;
     pos.y += x.ay;
   });
@@ -1250,40 +1389,42 @@ function processWord(word, display) {
   result.forEach(function(x) {
     colourIndex++;
     var colorText = glyphColors[colourIndex%glyphColors.length];
-    var paths = hbTest.glyphToPolyline(x.g);
     const px = pos.x + x.dx;
     const py = pos.y + x.dy;
 
-    const pathGlyph = x.pathGlyph;
-    const pathNear  = x.pathNear;
-    const pathFar   = x.pathFar;
+    const gs = x.gs;
 
     var id = `n${n}_g${x.g}_c${x.cl}`;
     var ismark = false;
 
     if (hbTest.isMarkClass(x.g) /*fontdata.marks[x.g]*/) {
       ismark = true;
-      overallMarks.unionWith(pathFar);
+      overallMarks.unionWith(gs.path('far'));
       if (display) {
         var color = colorText;
         if (solidColour) color = colors.glyphMark;
-        overallNear.unionWith(pathNear);
-        if (x.pathNearBase) {
-          overallNearBase.unionWith(x.pathNearBase);
+        overallNear.unionWith(gs.path('near'));
+        const nearBase = gs.path('nearBase');
+        if (nearBase) {
+          overallNearBase.unionWith(nearBase);
         }
-        hbTest.drawCPaths(pathGlyph, null, {
+        hbTest.drawCPaths(gs.path('glyph'), null, {
             id:id,
             gid:x.g,
             fillColor:color, fillOpacity:0.5,
             strokeColor:colors.glyphMark, strokeOpacity:0.8, strokeWidth:8});
       }
     } else {
-      overallFar.unionWith(pathFar);
+      overallFar.unionWith(gs.path('far'));
       if (display) {
         var color = colorText;
         if (solidColour) color = colors.glyphBase;
-        overallNear.unionWith(pathNear);
-        hbTest.drawCPaths(pathGlyph, null, {
+        let p = gs.path('nearBar');
+        if (p)
+          overallNear.unionWith(p);
+        else
+          overallNear.unionWith(gs.path('near'));
+        hbTest.drawCPaths(gs.path('glyph'), null, {
             id:id,
             gid:x.g,
             fillColor:color, fillOpacity:0.5,
@@ -1294,9 +1435,9 @@ function processWord(word, display) {
     if (display && showGids) {
       const fontSize = 100;
       const yOfs = pos.y + 660 + (n % 4) * 110;
-      const xOfs = pos.x + 0; 
+      const xOfs = pos.x + 0;
       var gidtype = '';
-      if (ismark) gidtype='\'';     
+      if (ismark) gidtype='\'';
       hbTest.svgData += `<text font-size="${fontSize}" x="${xOfs}" y="${yOfs}" fill="${colorText}">${gidtype}${x.g}</text>`;
     }
     pos.x += x.ax;
@@ -1322,12 +1463,15 @@ function processWord(word, display) {
       const isCursive = attachments.cursives.findPair(i1, i2);
       if (isCursive) {
         // Ignore any collision between two cursive glyphs of the same 'set'
+      } else
+      if (hbTest.glyphsOverlap(x1.g, x2.g)) {
+        // The glyphs are allowed to overlap
       } else {
         var collision;
         const markSet = attachments.marks.findEither(i1, i2);
         // markSet[0] = mark; markSet[1] = base
         // NOTE: This juggle is because we're not sure which way round the indices are
-        if (markSet && 
+        if (markSet &&
             (
               (i1 == markSet[1]) ||
               (i2 == markSet[1]) ||
@@ -1338,19 +1482,24 @@ function processWord(word, display) {
           // Going to use the Mark's glyph - not it's near-field
           if (i1 == markSet[0]) {
             // Mark to Base
-            if (x1.pathNearBase)
-              collision = x1.pathNearBase.collisionCPath(x2.pathNear);
+            if (x1.gs.path('nearBase'))
+              collision = x1.gs.path('nearBase').collisionCPath(x2.gs.path('near'));
             else
-              collision = x1.pathGlyph.collisionCPath(x2.pathNear);
+              collision = x1.gs.path('glyph').collisionCPath(x2.gs.path('near'));
           } else {
             // Base to Mark
-            if (x2.pathNearBase)
-              collision = x1.pathNear.collisionCPath(x2.pathNearBase);
+            if (x2.gs.path('nearBase'))
+              collision = x1.gs.path('near').collisionCPath(x2.gs.path('nearBase'));
             else
-              collision = x1.pathNear.collisionCPath(x2.pathGlyph);
+              collision = x1.gs.path('near').collisionCPath(x2.gs.path('glyph'));
           }
         } else {
-          collision = x1.pathNear.collisionCPath(x2.pathNear);
+          // Need to decide if both glyphs are part of the "bar" set (Indic)
+          if (hbTest.glyphsInBars(x1.g, x2.g)) {
+            collision = x1.gs.path('nearBar').collisionCPath(x2.gs.path('nearBar'));
+          } else {
+            collision = x1.gs.path('near').collisionCPath(x2.gs.path('near'));
+          }
         }
 
         if (collision) {
@@ -1370,7 +1519,7 @@ function processWord(word, display) {
           collision.freePath();
 
           // Try and see if we have a collision with the glyphs too
-          collision = x1.pathGlyph.collisionCPath(x2.pathGlyph);
+          collision = x1.gs.path('glyph').collisionCPath(x2.gs.path('glyph'));
           if (collision) {
             collisionCounts.colGlyph = (collisionCounts.colGlyph || 0)+1;
             collision.freePath();
@@ -1381,7 +1530,7 @@ function processWord(word, display) {
     }
     i1++;
   }
-  
+
   if (display) perfAdd('collision done');
 
   var islandsBase = overallFar.countIslands();
@@ -1454,11 +1603,8 @@ function processWord(word, display) {
   overallNear.freePath();
   overallNearBase.freePath();
   collisions.freePath();
-  result.forEach(function(x) { 
-    if (isAssigned(x.pathGlyph))    x.pathGlyph.freePath();
-    if (isAssigned(x.pathFar))      x.pathFar.freePath();
-    if (isAssigned(x.pathNear))     x.pathNear.freePath();
-    if (isAssigned(x.pathNearBase)) x.pathNearBase.freePath();
+  result.forEach(function(x) {
+    x.gs.destroy();
   });
   buffer.destroy();
 
@@ -1672,7 +1818,7 @@ function updateStatusMessage(i, total, checked, counts) {
   statusCounts.innerHTML = txt;
 }
 
-class ElapsedTimer {  
+class ElapsedTimer {
   constructor(t) {
     this.count = 0;
     this.max = t;
@@ -1877,6 +2023,6 @@ window.updateTransfer = updateTransfer;
 </script>
 
 </br>
-</br>2025-07-03
+</br>2025-07-04
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
