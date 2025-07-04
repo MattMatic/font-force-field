@@ -867,6 +867,12 @@ class HarfBuzzForceFieldClass {
         let pi = p.inflateToNewCPaths64(nearInflate);
         p.setPaths64(pi.paths64);
         gs.add('nearBar', p);
+
+        p = gs.getGlyphNewCPaths64();
+        p.subtract(bar);
+        pi = p.inflateToNewCPaths64(farInflate);
+        p.setPaths64(pi.paths64);
+        gs.add('farBar', p);
       }
       this.glyphs[glyphId] = gs; // Result cached in this object
     }
@@ -1415,7 +1421,10 @@ function processWord(word, display) {
             strokeColor:colors.glyphMark, strokeOpacity:0.8, strokeWidth:8});
       }
     } else {
-      overallFar.unionWith(gs.path('far'));
+      if (hbTest.glyphInBars(x.g))
+        overallFar.unionWith(gs.path('farBar'));  //????
+      else
+        overallFar.unionWith(gs.path('far'));
       if (display) {
         var color = colorText;
         if (solidColour) color = colors.glyphBase;
