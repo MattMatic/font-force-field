@@ -18,29 +18,29 @@ https://mattmatic.github.io/font-force-field
 - Drag and drop a font file onto the Font table cell (it will turn yellow)
     - Note: font name and version is shown
 - Adhoc test:
-	- Enter a word to show the glyphs, collisions, and other data
-	- Use the sliders to set the force field sizes
+  - Enter a word to show the glyphs, collisions, and other data
+  - Use the sliders to set the force field sizes
 - JSON definitions
-	- You can define a JSON file for your optimum settings for the font under test
-	- The JSON file can also include glyph ID overrides for special use cases
+  - You can define a JSON file for your optimum settings for the font under test
+  - The JSON file can also include glyph ID overrides for special use cases
 - Word list processing:
-	- Drag and drop a .TXT file onto the Word List area on the right
-	- (Recommend you use a JSON file to define the settings)
-	- Click "Rate!" to iterate through all words and produce a list
-	- When done, the "Save List" will download a text file of words and the rating outputs.
-	- You can slo click "Font Compare Word List" to transfer everything over to the word list processing tool!
+  - Drag and drop a .TXT file onto the Word List area on the right
+  - (Recommend you use a JSON file to define the settings)
+  - Click "Rate!" to iterate through all words and produce a list
+  - When done, the "Save List" will download a text file of words and the rating outputs.
+  - You can slo click "Font Compare Word List" to transfer everything over to the word list processing tool!
 
 # Rating output abbreviations
 The rating output that is used in the list:
 - `GG#` Collision Glyph-to-Glyph. i.e. the glyphs genuinely overlap
 - `cb#` Collision Base-to-Base Near Field
 - `cx#` Collision Mark-to-Base Near Field
-	- Either Near Field to Near Field
-	- Or Near Field to Near-Base Field (depending on the relationship between the mark glyph and the base glyph)
+  - Either Near Field to Near Field
+  - Or Near Field to Near-Base Field (depending on the relationship between the mark glyph and the base glyph)
 - `cm#` Collision Mark-to-Mark Near Field
 - `ca:####` Collision Area value. The `####` value is in design-units-squared
 - `ok` Far Force Field might be ok
-	- Where there is a gap in the Far Fields for the base, but the Far Fields of the marks join it all together
+  - Where there is a gap in the Far Fields for the base, but the Far Fields of the marks join it all together
 - `fb` Far force field shows a gap for the base glyphs
 - `fm` Far force field shows a gap for the mark glyphs
 
@@ -53,9 +53,9 @@ Suggestions:
 - The `base` amd `mark` values **must** be defined as absolute (font design units)
 - The GID overrides can use either percentages of the `base` or `mark` values, or can override in font design units
 - Abbreviations:
-	- `n` = Near Force Field
-	- `nb` = Near Force Field for Mark-to-Base (or mark to cursive group)
-	- `f` = Far Force Field
+  - `n` = Near Force Field
+  - `nb` = Near Force Field for Mark-to-Base (or mark to cursive group)
+  - `f` = Far Force Field
 
 ```json
 {
@@ -77,6 +77,27 @@ Suggestions:
   '644':{'n':15,    'f':50},      // Explicit values
 
   '454':{'n':'80%', 'nb':'50%', 'f':40},  // Mixed. `nb` = mark-to-base near field
+
+  // For Indic scripts with joining top bar
+  'bar' : [
+    {
+      // The area(s) can be either horizontal bars, or rectangles.
+      // Several areas can be defined.
+      // Only GIDs in this set remove the 'area' from collision checks
+      'area': [
+        [600, 650],               // exclusion between y=600 and y=650
+        [50, 300, 80, 400],       // Rectangle (50, 300) - (80, 400)
+      ],
+      'gids': [56, 58, 70, 100],  // GIDs that are in the 'bar' set
+    },
+  ],
+
+  // Array of arrays for GIDs that are allowed to overlap
+  // Useful for Indic scripts with non-cursive glyphs that overlap in areas other than the 'bar' area
+  'overlaps': [                   
+    [56, 59, 61],                 // i.e. 56 cannot overlap 57
+    [57, 63, 75, 85],
+  ],
 }
 ```
 
