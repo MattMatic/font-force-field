@@ -19,6 +19,52 @@ table, th, td {
   border-collapse: collapse;
   padding: 2px;
 }
+.dropbtn {
+  border-radius: 4px;
+  background-color: rgba(96,192,128,0.5);
+  color: black;
+  padding: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 100%
+}
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+.dropdown-content {
+  align: left;
+  border-radius: 2px 8px 12px 12px;
+  display: none;
+  position: absolute;
+  background-color: #eff;
+  min-width: 200px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+}
+.dropdown-content a{
+  color: black;
+  padding: 8px 12px;
+  text-decoration: none;
+  display: block;
+}
+th .dropdown-content{
+  text-align: left;
+  font-weight: bold;
+  font-size: 100%;
+}
+table .dropdown-content {
+  padding: 10px;
+}
+.dropdown-content a:hover {background-color: #cee;}
+.dropdown:hover .dropdown-content {
+  display: block;
+}
+.dropdown:hover .dropbtn {
+  background-color: #3e8e41;
+  color: white;
+}
 </style>
 <script type="text/javascript" src="js/hb.js"></script> <!-- Module - REQUIRED -->
 <script type="text/javascript" src="js/hbjs.js"></script>
@@ -35,12 +81,23 @@ table, th, td {
   <table border=0 width='100%'>
     <tr><td width='25%'>Font:</td><td id='theFont'><div id='fontInfo'>-font-</div></td></tr>
   </table>
-</td><td></td>
+</td><td>
+</td>
 </tr>
 <tr><th class='tableColumnHead'>Adhoc Test</th><th class='tableColumnHead'>List Processing</th></tr>
 <tr><td valign="top">
   <table border=0 width='100%'>
-  <tr><td width='25%'>Text:</td><td><input type="text" style="width:60%" id="inputText" oninput="updateValues();" value="abc"></input></td></tr>
+  <tr><td width='25%'>Text:</td><td><input type="text" style="width:60%" id="inputText" oninput="updateValues();" value="abc"></input>
+    <div class='dropdown'>
+      <button class='dropbtn'>&#x1F30D;HarfBuzz</button>
+      <div class='dropdown-content'>
+        <table border=0 width='100%'>
+          <tr><th>Script:</th><td><input type='text' id='inputScript' oninput='updateScriptLanguage();' title='HarfBuzz script tag (4 character). e.g. "arab"'/></td></tr>
+          <tr><th>Language:</th><td><input type='text' id='inputLanguage' oninput='updateScriptLanguage();' title='HarfBuzz language tag (4 character)'/></td></tr>
+        </table>  
+      </div>
+    </div>
+  </td></tr>
   <tr><td>Ranges:</td><td id='rangeChoice'>
     <input type='radio' id='showSliders' name='rangeSettings' value='sliders' checked>Sliders</input>
     <input type='radio' id='showJSON'    name='rangeSettings' value='JSON'>JSON</input>
@@ -293,6 +350,12 @@ function openFontCompareWordListTool() {
   }
 }
 
+function updateScriptLanguage() {
+  const script = inputScript.value;
+  const language = inputLanguage.value;
+  hbTest.setScriptLanguage(script, language);
+  updateValues();
+}
 </script>
 <script type='module'>
 "use strict";
@@ -1877,7 +1940,9 @@ function updateTransfer(xfer) {
   }
   loadPickWord(0);
   if ((xfer.script !== null) || (xfer.language !== null)) {
-    hbTest.setScriptLanguage(xfer.script || '', xfer.language || '');
+    inputScript.value = xfer.script || '';
+    inputLanguage.value = xfer.language || '';
+    updateScriptLanguage();
   }
   updateValues();
 }
