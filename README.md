@@ -78,6 +78,12 @@ Suggestions:
 
   '454':{n:'80%', nb:'50%', f:40},  // Mixed. `nb` = mark-to-base near field
 
+  // Named groups of GIDs for use with `bar` and `overlaps`
+  groups: [
+    consonants: [102,103,105],
+    marks: [203,405,205],
+  ],
+
   // For Indic scripts with joining top bar
   bar : [
     {
@@ -98,6 +104,7 @@ Suggestions:
   overlaps: [                   
     [56, 59, 61],                 // i.e. 56 cannot overlap 57
     [57, 63, 75, 85],
+    [consonants, 75, 85],         // The `group` called `consonant` and 75 and 85
   ],
 }
 ```

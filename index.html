@@ -1036,11 +1036,40 @@ class HarfBuzzForceFieldClass {
     }
     return res;
   }
+  gidArrayExpand(gids) {
+    // Expand using this.groups if needed
+    let res = [];
+    const size = gids.length;
+    for (let i=0;i<size;i++) {
+      const v = gids[i];
+      if (typeof v === 'number')
+        res.push(v);
+      else
+      if (typeof v === 'string') {
+        const group = this.groups[v];
+        if (group) {
+          const size = group.length;
+          for (let ii=0;ii<size;ii++) {
+            const g = group[ii];            
+            if (typeof g === 'number') {
+              res.push(g);
+            } else {
+              throw new Error('Group "'+v+'" recursion!');
+            }
+          }
+        } else {
+          // Missing group!
+          throw new Error('Group "'+v+'" not found!');
+        }
+      }
+    }
+    return res;
+  }
   setBar(barObject) {
     if (this?.bar?.cpaths) this.bar.cpaths64.destroy();
     this.bar = {};
     this.bar.area = barObject.area; // An array of either y1,y2 or x1,y1,x2,y2
-    this.bar.gids = barObject.gids; // A plain array of gids
+    this.bar.gids = this.gidArrayExpand(barObject.gids); // A plain array of gids
     this.bar.far  = barObject.far;  // Whether to include the bar in the far 
 
     if (this?.bar?.cpaths64)
@@ -1086,7 +1115,12 @@ class HarfBuzzForceFieldClass {
     return (this.bar.gids.includes(gid));
   }
   setOverlaps(overlapsArray) {
-    this.overlaps = overlapsArray;
+    this.overlaps = [];
+    const size = overlapsArray.length;
+    for (let i=0;i<size;i++) {
+      const a = overlapsArray[i];
+      this.overlaps.push(this.gidArrayExpand(a));
+    }
   }
   glyphsOverlap(gid1, gid2) {
     if (!this.overlaps) return false;
@@ -1096,6 +1130,17 @@ class HarfBuzzForceFieldClass {
       }
     }
     return false;
+  }
+  clearGroups() {
+    this.groups = {};    
+  }
+  setGroups(data) {
+    this.clearGroups();
+    const obj = this;
+    Object.keys(data).forEach(function(k) {
+      console.log('setGroups', k, data[k]);
+      obj.groups[k] = data[k];
+      });
   }
 }
 
@@ -1324,6 +1369,7 @@ function updateJSON() {
   var fontCompare = null;
   hbTest.freeGlyphValues();
   hbTest.freeGlyphCache();
+  hbTest.clearGroups();
   for (let key in data) {
     if (key === 'base') {
       const n = getOldOrNew(data.base.min, data.base.n);
@@ -1343,6 +1389,11 @@ function updateJSON() {
     else
     if (key === 'harfbuzz') {
       hbTest.setScriptLanguage(data[key].script, data[key].language);
+    }
+    else
+    if (key === 'groups') {
+      // Do these before 'bar' and 'overlaps' that will use the groups
+      hbTest.setGroups(data[key]);
     }
     else
     if (key === 'bar') {
@@ -1551,7 +1602,8 @@ function processWord(word, display) {
               attachments.cursives.findPair(i1, markSet[1]) ||
               attachments.cursives.findPair(i2, markSet[1])
             )
-           ) {
+           )
+        {
           // Going to use the Mark's glyph - not it's near-field
           if (i1 == markSet[0]) {
             // Mark to Base
@@ -2098,6 +2150,6 @@ window.updateTransfer = updateTransfer;
 </script>
 
 </br>
-</br>2025-07-04
+</br>2025-07-08
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
