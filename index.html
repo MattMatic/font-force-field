@@ -1138,9 +1138,27 @@ class HarfBuzzForceFieldClass {
     this.clearGroups();
     const obj = this;
     Object.keys(data).forEach(function(k) {
-      console.log('setGroups', k, data[k]);
-      obj.groups[k] = data[k];
-      });
+      const v = data[k];
+      const size = v.length;
+      let group = [];
+      for (let i=0; i<size;i++) {
+        const gid = v[i];
+        if (typeof gid === 'string') {
+          if (gid.includes('-')) {
+            // Range `a-b`
+            const range = gid.split('-');
+            const rangeFrom = parseInt(range[0]);
+            const rangeTo = parseInt(range[1]);
+            for (let vv = rangeFrom; vv <= rangeTo; vv++) {
+              group.push(vv);
+            }
+          }
+        } else {
+          group.push(gid);
+        }
+      }
+      obj.groups[k] = group;
+    });
   }
 }
 
@@ -2150,6 +2168,6 @@ window.updateTransfer = updateTransfer;
 </script>
 
 </br>
-</br>2025-07-08
+</br>2025-07-08 k
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>

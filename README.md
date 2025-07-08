@@ -80,7 +80,7 @@ Suggestions:
 
   // Named groups of GIDs for use with `bar` and `overlaps`
   groups: [
-    consonants: [102,103,105],
+    consonants: [102,103,105,'110-125'], // Including a range (use quotes!)
     marks: [203,405,205],
   ],
 
