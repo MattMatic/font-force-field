@@ -1160,6 +1160,9 @@ class HarfBuzzForceFieldClass {
       obj.groups[k] = group;
     });
   }
+  getGroup(id) {
+    return this.groups[id];
+  }
 }
 
 class CursivesSet {
@@ -1436,12 +1439,32 @@ function updateJSON() {
       hbTest.setOverlaps(data[key]);
     }
     else {
-      if (!isNaN(key)) {
-        const gid = parseInt(key);
+      if (typeof key === 'string') {
         const n  = getOldOrNew(data[key].min, data[key].n);
         const nb = getOldOrNew(data[key].min_base, data[key].nb);
         const f  = getOldOrNew(data[key].max, data[key].f);
-        hbTest.setGlyphValues(gid, f, n, nb);
+
+        if (key.includes('-')) {
+          // Range `a-b`
+          const range = key.split('-');
+          const rangeFrom = parseInt(range[0]);
+          const rangeTo = parseInt(range[1]);
+          for (let gid = rangeFrom; gid <= rangeTo; gid++) {
+            hbTest.setGlyphValues(gid, f, n, nb);
+          }
+        } else
+        if (!isNaN(key)) {
+          const gid = parseInt(key);
+          hbTest.setGlyphValues(gid, f, n, nb);
+        } else {
+          // Could be a group...
+          const group = hbTest.getGroup(key);
+          if (group) {
+            for (let gid of group) {
+              hbTest.setGlyphValues(gid, f, n, nb);
+            }
+          }
+        }
       }
     }
   }
