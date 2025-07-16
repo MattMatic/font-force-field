@@ -427,6 +427,43 @@ function isAssigned(obj) {
   return true;
 }
 
+function processRangeInteger(txt, groupSet, func) {
+  var count = 0;
+  if (typeof txt === 'number') {
+    func(txt);
+    return 1;
+  }
+  if (typeof txt !== 'string') {
+    return 0;
+  }
+  var sets = txt.split(',');
+  for (let set of sets) {
+    var range = set.split('-');
+    if (range.length === 1) {
+      const v = range[0];
+      if (!isNaN(v)) {
+        func(parseInt(v));
+        count++;        
+      } else
+      if (groupSet[v]) {
+        for (let vv of groupSet[v]) {
+          func(vv);
+          count++;
+        }
+      }
+    }
+    else {
+      const rangeFrom = parseInt(range[0]);
+      const rangeTo = parseInt(range[1]);
+      for (let v = rangeFrom; v<=rangeTo; v++) {
+        func(v);
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 // Class to wrap up a Clipper2 Paths64 and Bounding Box
 // and provide some basic optimisation calculations
 class CPaths64 {
@@ -682,6 +719,11 @@ class HarfBuzzForceFieldClass {
     this.glyphs = {};
     this.glyphValues = {};
     this.svgData = '';
+    this.clearDefaults();
+  }
+  clearDefaults() {    
+    this.defaults = {};
+    this.defaults.clusterOverlap = true;  // Take this is as default
   }
   destroy() {
     this.freeFont();
@@ -766,11 +808,12 @@ class HarfBuzzForceFieldClass {
     this.markNearBase = nearBase;
     this.markFar = far;
   }
-  setGlyphValues(gid, far, near, nearBase) {
+  setGlyphValues(gid, far, near, nearBase, clusterOverlap) {
     this.glyphValues[gid] = {
       far:far,
       near:near,
       nearBase:nearBase,
+      clusterOverlap: clusterOverlap,
     };
   }
   getGlyphValues(gid) {
@@ -779,6 +822,7 @@ class HarfBuzzForceFieldClass {
     var near = this.baseNear || 30;
     var far  = this.baseFar || 90;
     var nearBase = null;
+    var clusterOverlap = undefined;
 
     if (isMark) {
       near = this.markNear || 30;
@@ -801,11 +845,13 @@ class HarfBuzzForceFieldClass {
       near = toValue(gb.near, near);
       if (isMark)
         nearBase = toValue(gb.nearBase, nearBase);
+      clusterOverlap = gb.clusterOverlap;
     }
     return {
       far: far,
       near: near,
       nearBase: nearBase,
+      clusterOverlap: clusterOverlap,
     };
   }
 
@@ -1143,19 +1189,7 @@ class HarfBuzzForceFieldClass {
       let group = [];
       for (let i=0; i<size;i++) {
         const gid = v[i];
-        if (typeof gid === 'string') {
-          if (gid.includes('-')) {
-            // Range `a-b`
-            const range = gid.split('-');
-            const rangeFrom = parseInt(range[0]);
-            const rangeTo = parseInt(range[1]);
-            for (let vv = rangeFrom; vv <= rangeTo; vv++) {
-              group.push(vv);
-            }
-          }
-        } else {
-          group.push(gid);
-        }
+        processRangeInteger(gid, null, function(g) {group.push(g);});
       }
       obj.groups[k] = group;
     });
@@ -1391,6 +1425,7 @@ function updateJSON() {
   hbTest.freeGlyphValues();
   hbTest.freeGlyphCache();
   hbTest.clearGroups();
+  hbTest.clearDefaults();
   for (let key in data) {
     if (key === 'base') {
       const n = getOldOrNew(data.base.min, data.base.n);
@@ -1438,33 +1473,20 @@ function updateJSON() {
       //   ]`
       hbTest.setOverlaps(data[key]);
     }
+    else
+    if (key === 'defaults') {
+      hbTest.defaults.clusterOverlap = data[key].cl;
+    }
     else {
       if (typeof key === 'string') {
         const n  = getOldOrNew(data[key].min, data[key].n);
         const nb = getOldOrNew(data[key].min_base, data[key].nb);
         const f  = getOldOrNew(data[key].max, data[key].f);
+        const cl = data[key].cl ?? hbTest.defaults.clusterOverlap;  // Whether allowed to overlap same cluster
 
-        if (key.includes('-')) {
-          // Range `a-b`
-          const range = key.split('-');
-          const rangeFrom = parseInt(range[0]);
-          const rangeTo = parseInt(range[1]);
-          for (let gid = rangeFrom; gid <= rangeTo; gid++) {
-            hbTest.setGlyphValues(gid, f, n, nb);
-          }
-        } else
-        if (!isNaN(key)) {
-          const gid = parseInt(key);
-          hbTest.setGlyphValues(gid, f, n, nb);
-        } else {
-          // Could be a group...
-          const group = hbTest.getGroup(key);
-          if (group) {
-            for (let gid of group) {
-              hbTest.setGlyphValues(gid, f, n, nb);
-            }
-          }
-        }
+        processRangeInteger(key, hbTest.groups, function(gid) {
+          hbTest.setGlyphValues(gid, f, n, nb, cl);
+        });
       }
     }
   }
@@ -1632,7 +1654,7 @@ function processWord(word, display) {
       if (hbTest.glyphsOverlap(x1.g, x2.g)) {
         // The glyphs are allowed to overlap
       } else {
-        var collision;
+        var collision = undefined;
         const markSet = attachments.marks.findEither(i1, i2);
         // markSet[0] = mark; markSet[1] = base
         // NOTE: This juggle is because we're not sure which way round the indices are
@@ -1663,6 +1685,16 @@ function processWord(word, display) {
           // Need to decide if both glyphs are part of the "bar" set (Indic)
           if (hbTest.glyphsInBars(x1.g, x2.g)) {
             collision = x1.gs.path('nearBar').collisionCPath(x2.gs.path('nearBar'));
+          } else
+          if (markSet && (x1.cl === x2.cl) && 
+                (
+                  hbTest.defaults.clusterOverlap ||
+                  hbTest.glyphValues[x1.g]?.clusterOverlap || 
+                  hbTest.glyphValues[x2.g]?.clusterOverlap
+                )
+             )
+          {
+            // Same cluster... and are allowed to overlap
           } else {
             collision = x1.gs.path('near').collisionCPath(x2.gs.path('near'));
           }
@@ -1670,7 +1702,7 @@ function processWord(word, display) {
 
         if (collision) {
           //if (display)
-            collisions.unionWith(collision);
+          collisions.unionWith(collision);
           if (hbTest.isMarkClass(x1.g) /*fontdata.marks[x1.g]*/) {
             if (hbTest.isMarkClass(x2.g) /*fontdata.marks[x2.g]*/)
               collisionCounts.colMarkToMark = (collisionCounts.colMarkToMark || 0) + 1;
@@ -2187,10 +2219,11 @@ window.pickWord = pickWord;
 window.opentype = opentype;
 window.Layout = Layout;
 window.updateTransfer = updateTransfer;
+window.processRangeInteger = processRangeInteger;
 
 </script>
 
 </br>
-</br>2025-07-16 m
+</br>2025-07-16 o
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>

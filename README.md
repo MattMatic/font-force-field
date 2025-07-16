@@ -67,6 +67,7 @@ Suggestions:
   // 'n'  = Near
   // 'f'  = Far
   // 'nb' = Near Base (mark to glyph or cursive group)
+  // 'cl' = 1 means allowed to overlap with cluster set
 
   base:{n:45, f:95},
 
@@ -106,8 +107,24 @@ Suggestions:
     [57, 63, 75, 85],
     [consonants, 75, 85],         // The `group` called `consonant` and 75 and 85
   ],
+
+  defaults: {
+    cl: false,                    // Says that attached marks are not allowed to overlap within the cluster by default (without this it allows)
+  },
+
+  '123' : {cl:true},              // Override cluster overlap for one GID
 }
 ```
+
+Ranges and group references are also supported in most fields:
+```json
+…
+  '100-104,115,123-126': {nb: -50},
+  'marks,300-305' : {nb: -100},
+…
+```
+
+
 
 # Technical Details
 Please see: https://github.com/MattMatic/font-force-field/blob/main/TECHNICAL.md
