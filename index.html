@@ -723,7 +723,7 @@ class HarfBuzzForceFieldClass {
   }
   clearDefaults() {    
     this.defaults = {};
-    this.defaults.clusterOverlap = true;  // Take this is as default
+    this.defaults.clusterOverlap = false;  // Take this is as default
   }
   destroy() {
     this.freeFont();
@@ -809,6 +809,9 @@ class HarfBuzzForceFieldClass {
     this.markFar = far;
   }
   setGlyphValues(gid, far, near, nearBase, clusterOverlap) {
+    if (typeof clusterOverlap === 'undefined') {
+      clusterOverlap = this.defaults.clusterOverlap;
+    }
     this.glyphValues[gid] = {
       far:far,
       near:near,
@@ -1482,7 +1485,7 @@ function updateJSON() {
         const n  = getOldOrNew(data[key].min, data[key].n);
         const nb = getOldOrNew(data[key].min_base, data[key].nb);
         const f  = getOldOrNew(data[key].max, data[key].f);
-        const cl = data[key].cl ?? hbTest.defaults.clusterOverlap;  // Whether allowed to overlap same cluster
+        var cl = data[key].cl;
 
         processRangeInteger(key, hbTest.groups, function(gid) {
           hbTest.setGlyphValues(gid, f, n, nb, cl);
@@ -1688,7 +1691,6 @@ function processWord(word, display) {
           } else
           if (markSet && (x1.cl === x2.cl) && 
                 (
-                  hbTest.defaults.clusterOverlap ||
                   hbTest.glyphValues[x1.g]?.clusterOverlap || 
                   hbTest.glyphValues[x2.g]?.clusterOverlap
                 )
@@ -2224,6 +2226,6 @@ window.processRangeInteger = processRangeInteger;
 </script>
 
 </br>
-</br>2025-07-16 o
+</br>2025-07-16 v
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>

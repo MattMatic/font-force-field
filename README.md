@@ -109,7 +109,7 @@ Suggestions:
   ],
 
   defaults: {
-    cl: false,                    // Says that attached marks are not allowed to overlap within the cluster by default (without this it allows)
+    cl: true,                    // Says that attached marks are allowed to overlap within the cluster by default (without this it does not allow unless the GID overrides)
   },
 
   '123' : {cl:true},              // Override cluster overlap for one GID
