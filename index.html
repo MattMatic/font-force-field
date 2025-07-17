@@ -434,6 +434,7 @@ function processRangeInteger(txt, groupSet, func) {
     return 1;
   }
   if (typeof txt !== 'string') {
+    throw new Error('Group/Range error "'+v+'"');
     return 0;
   }
   var sets = txt.split(',');
@@ -451,10 +452,16 @@ function processRangeInteger(txt, groupSet, func) {
           count++;
         }
       }
+      else {
+        throw new Error('Group/Range error "'+v+'"');
+      }
     }
     else {
       const rangeFrom = parseInt(range[0]);
       const rangeTo = parseInt(range[1]);
+      if (rangeTo <= rangeFrom) {
+        throw new Error('Range error "'+set+'"');
+      }
       for (let v = rangeFrom; v<=rangeTo; v++) {
         func(v);
         count++;
@@ -1429,69 +1436,73 @@ function updateJSON() {
   hbTest.freeGlyphCache();
   hbTest.clearGroups();
   hbTest.clearDefaults();
-  for (let key in data) {
-    if (key === 'base') {
-      const n = getOldOrNew(data.base.min, data.base.n);
-      const f = getOldOrNew(data.base.max, data.base.f);
-      hbTest.setBase(n, f);
-    }
-    else
-    if (key === 'mark') {
-      const n  = getOldOrNew(data.mark.min, data.mark.n);
-      const nb = getOldOrNew(data.mark.min, data.mark.nb);
-      const f  = getOldOrNew(data.mark.max, data.mark.f);
-      hbTest.setMark(n, nb, f);
-    }
-    else
-    if (key === 'font')
-      fontCompare = data[key];
-    else
-    if (key === 'harfbuzz') {
-      hbTest.setScriptLanguage(data[key].script, data[key].language);
-    }
-    else
-    if (key === 'groups') {
-      // Do these before 'bar' and 'overlaps' that will use the groups
-      hbTest.setGroups(data[key]);
-    }
-    else
-    if (key === 'bar') {
-      // Indic bar style
-      // `'bar': [
-      //   {
-      //     'area' : [ [y1,y2] ],
-      //     'gids' : [ gid,gid,gid,…],
-      //   },
-      //  ]`
-      hbTest.setBar(data[key]);
-    }
-    else
-    if (key === 'overlaps') {
-      // GIDs that are allowed to overlap
-      // Distinct from the `exclusions` for bar style overlaps
-      // `'overlaps': [
-      //     [gid,gid,…],
-      //     [gid,gid,…],
-      //     …
-      //   ]`
-      hbTest.setOverlaps(data[key]);
-    }
-    else
-    if (key === 'defaults') {
-      hbTest.defaults.clusterOverlap = data[key].cl;
-    }
-    else {
-      if (typeof key === 'string') {
-        const n  = getOldOrNew(data[key].min, data[key].n);
-        const nb = getOldOrNew(data[key].min_base, data[key].nb);
-        const f  = getOldOrNew(data[key].max, data[key].f);
-        var cl = data[key].cl;
+  try {
+    for (let key in data) {
+      if (key === 'base') {
+        const n = getOldOrNew(data.base.min, data.base.n);
+        const f = getOldOrNew(data.base.max, data.base.f);
+        hbTest.setBase(n, f);
+      }
+      else
+      if (key === 'mark') {
+        const n  = getOldOrNew(data.mark.min, data.mark.n);
+        const nb = getOldOrNew(data.mark.min, data.mark.nb);
+        const f  = getOldOrNew(data.mark.max, data.mark.f);
+        hbTest.setMark(n, nb, f);
+      }
+      else
+      if (key === 'font')
+        fontCompare = data[key];
+      else
+      if (key === 'harfbuzz') {
+        hbTest.setScriptLanguage(data[key].script, data[key].language);
+      }
+      else
+      if (key === 'groups') {
+        // Do these before 'bar' and 'overlaps' that will use the groups
+        hbTest.setGroups(data[key]);
+      }
+      else
+      if (key === 'bar') {
+        // Indic bar style
+        // `'bar': [
+        //   {
+        //     'area' : [ [y1,y2] ],
+        //     'gids' : [ gid,gid,gid,…],
+        //   },
+        //  ]`
+        hbTest.setBar(data[key]);
+      }
+      else
+      if (key === 'overlaps') {
+        // GIDs that are allowed to overlap
+        // Distinct from the `exclusions` for bar style overlaps
+        // `'overlaps': [
+        //     [gid,gid,…],
+        //     [gid,gid,…],
+        //     …
+        //   ]`
+        hbTest.setOverlaps(data[key]);
+      }
+      else
+      if (key === 'defaults') {
+        hbTest.defaults.clusterOverlap = data[key].cl;
+      }
+      else {
+        if (typeof key === 'string') {
+          const n  = getOldOrNew(data[key].min, data[key].n);
+          const nb = getOldOrNew(data[key].min_base, data[key].nb);
+          const f  = getOldOrNew(data[key].max, data[key].f);
+          var cl = data[key].cl;
 
-        processRangeInteger(key, hbTest.groups, function(gid) {
-          hbTest.setGlyphValues(gid, f, n, nb, cl);
-        });
+          processRangeInteger(key, hbTest.groups, function(gid) {
+            hbTest.setGlyphValues(gid, f, n, nb, cl);
+          });
+        }
       }
     }
+  } catch (e) {
+    jsonError.innerText = e;
   }
   if (fontCompare) {
     const name = fontCompare.name;
@@ -2226,6 +2237,6 @@ window.processRangeInteger = processRangeInteger;
 </script>
 
 </br>
-</br>2025-07-16 v
+</br>2025-07-17 h
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
