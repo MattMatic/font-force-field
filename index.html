@@ -65,6 +65,45 @@ table .dropdown-content {
   background-color: #3e8e41;
   color: white;
 }
+.tooltip {
+  position: relative;
+  display: inline-block;
+  border-bottom: 1px dotted #ccc;
+  color: #006080;
+}
+.tooltip .tooltiptext {
+  visibility: hidden;
+  position: absolute;
+  width: 340px;
+  background-color: #555;
+  color: #fff;
+  text-align: center;
+  padding: 5px 0;
+  border-radius: 6px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+  opacity: 1;
+}
+.tooltip-bottom {
+  top: 135%;
+  left: 50%;
+  margin-left: -60px;
+}
+.tooltip-bottom::after {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -5px;
+  margin-width: 5px;
+  border-style: solid;
+  border-color: transparent transparent #555 transparent;
+}
+
 </style>
 <script type="text/javascript" src="js/hb.js"></script> <!-- Module - REQUIRED -->
 <script type="text/javascript" src="js/hbjs.js"></script>
@@ -92,8 +131,18 @@ table .dropdown-content {
       <button class='dropbtn'>&#x1F30D;HarfBuzz</button>
       <div class='dropdown-content'>
         <table border=0 width='100%'>
-          <tr><th>Script:</th><td><input type='text' id='inputScript' oninput='updateScriptLanguage();' title='HarfBuzz script tag (4 character). e.g. "arab"'/></td></tr>
-          <tr><th>Language:</th><td><input type='text' id='inputLanguage' oninput='updateScriptLanguage();' title='HarfBuzz language tag (4 character)'/></td></tr>
+          <tr><th>Script:</th><td>
+            <span class='tooltip'>
+              <input type='text' id='inputScript' oninput='updateScriptLanguage();'/>
+              <span class='tooltiptext tooltip-bottom' id='inputScriptList'>-</span>
+            </span>
+          </td></tr>
+          <tr><th>Language:</th><td>
+            <span class='tooltip'>
+              <input type='text' id='inputLanguage' oninput='updateScriptLanguage();'/>
+              <span class='tooltiptext tooltip-bottom' id='inputLanguageList'>-</span>
+            </span>
+          </td></tr>
         </table>  
       </div>
     </div>
@@ -358,9 +407,44 @@ function openFontCompareWordListTool() {
   }
 }
 
+function iterateGtable(gtable, theKey, outputset) {
+  if (!gtable) return;
+  const scriptTable = gtable.scriptTable;
+  if (!scriptTable) return;
+  if (!scriptTable[theKey]) return;
+  for (const y of scriptTable[theKey]) {
+    outputset.add(y);
+  }
+}
+
+function mapToQuotes(list) {
+  return '"'+[...list].sort().join('","')+'"';
+}
+
 function updateScriptLanguage() {
   const script = inputScript.value;
   const language = inputLanguage.value;
+
+  const fontInfo = hbTest.fontInfo;
+  inputScriptList.innerText = '(empty)';
+  inputLanguageList.innerText = '(empty)';
+  if (fontInfo) {
+    if (fontInfo.scripts.size > 0) {
+      inputScriptList.innerText = mapToQuotes(fontInfo.scripts);
+    }
+    let languages = fontInfo.languages;
+    if (script !== '') {
+      const theScript = script.toLowerCase();
+      languages = new Set();
+      iterateGtable(fontInfo.GSUB, theScript, languages);
+      iterateGtable(fontInfo.GPOS, theScript, languages);      
+    }
+    if (languages.size > 0) {
+      inputLanguageList.innerText = mapToQuotes(languages);
+    }
+    // features too
+  }
+
   hbTest.setScriptLanguage(script, language);
   updateValues();
 }
@@ -400,6 +484,7 @@ Promise.all(promises).then(([aClipper2Z, aClipper2ZUtils, aharfBuzzModule]) => {
 function loadTheFont(blob) {
   window.fontBlob = blob;
   hbTest.setFontBlob(blob);
+  updateScriptLanguage();
   fontInfo.innerHTML = hbTest.fileDescription;
 }
 
@@ -729,6 +814,31 @@ class GlyphSet {
   }
 }
 
+function fillOtInfoTables(fontInfo) {
+  fontInfo.scripts = new Set();
+  fontInfo.languages = new Set();
+  fontInfo.features = new Set();
+
+  let doGtable = function(t) {
+    if (!t) return;
+    if (t.scriptTable) {
+      for (const key in t.scriptTable) {
+        fontInfo.scripts.add(key);
+        for (const val of t.scriptTable[key]) {
+          fontInfo.languages.add(val);
+        }
+      }
+    }
+    if (t.featureListTable) {
+      for (const val of t.featureListTable) {
+        fontInfo.features.add(val);
+      }
+    }
+  }
+  doGtable(fontInfo.GSUB);
+  doGtable(fontInfo.GPOS);
+}
+
 class HarfBuzzForceFieldClass {
   constructor() {
     this.glyphs = {};
@@ -791,6 +901,7 @@ class HarfBuzzForceFieldClass {
     if (!isAssigned(fb)) return;
     const otInfo = OTInfo.parse(fb);
     this.fontInfo = otInfo[0];
+    fillOtInfoTables(this.fontInfo);
     this.fontName = this.fontInfo.name;
     this.fileDescription = this.fontName.fullName + '</br>' + this.fontName.version;
 
@@ -2210,6 +2321,6 @@ window.processRangeInteger = processRangeInteger;
 </script>
 
 </br>
-</br>2025-07-23 i
+</br>2025-07-24 o
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
