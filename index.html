@@ -121,24 +121,24 @@ table .dropdown-content {
 
 // e.g.
 {
-  'font':{
-    'name':'MyFontName',
-    'version':'Exact Version'
+  font:{
+    name:'MyFontName',
+    version:'Exact Version'
   },  // Warning if different
 
   // 'n'  = Near
   // 'f'  = Far
   // 'nb' = Near Base (mark to glyph or cursive group)
 
-  'base':{'n':45, 'f':95},
+  base:{n:45, f:95},
 
-  'mark':{'n':10, 'nb':5, 'f':100},
+  mark:{n:10, nb:5, f:100},
 
   // GID specific
-  //'643':{'n':'120%','f':'200%'},  // Using percentages
-  //'644':{'n':15,    'f':50},      // Explicit values
+  //'643':{n:'120%',f:'200%'},  // Using percentages
+  //'644':{n:15,    f:50},      // Explicit values
 
-  //'454':{'n':'80%', 'nb':'50%', 'f':40},  // Mixed. `nb` = mark-to-base near field
+  //'454':{n:'80%', nb:'50%', f:40},  // Mixed. `nb` = mark-to-base near field
 }
       </textarea>
       </br>
@@ -1978,11 +1978,26 @@ patchDragDrop(slidersTable, handleJsonText);
 
 const updateInterval = 32; // milliseconds
 
+function secondsToHHMMSS(t) {
+  if (t < 3600)
+    return new Date(t * 1000).toISOString().substring(14, 19);
+  else
+    return new Date(t * 1000).toISOString().substring(11, 16);
+}
+
 function updateStatusMessage(i, total, checked, counts) {
+  const overallTime = (Date.now() - loopStarted) / 1000.0;
+  var rateWords;
+  if (i < 0)
+    rateWords = Math.round(total / overallTime);
+  else
+    rateWords = Math.round(i / overallTime);
+  var eta = (total - i) / rateWords;
+
   if (i <= 0)
     statusUpdate.innerHTML = '-';
   else
-    statusUpdate.innerHTML = '<div><font color="red">'+i + '/'+ total+' ('+checked+')</font></div>';
+    statusUpdate.innerHTML = `<progress max="${total}" value="${i}"></progress></br><div><font color="red">${i}/${total} (${checked})</font></br>${secondsToHHMMSS(overallTime)}/${secondsToHHMMSS(eta)} (${rateWords}/s)</div>`;
 
   var ol = Object.entries(counts).sort();
   var txt = '<table border=0 width="60%">';
@@ -1990,13 +2005,6 @@ function updateStatusMessage(i, total, checked, counts) {
     txt += '<tr><td width="50%">'+e[0] + '</th><td align="right">' + e[1]+'</td><tr>';
   });
   txt += '</table>';
-  const overallTime = (Date.now() - loopStarted) / 1000.0;
-  var rateWords;
-  if (i < 0)
-    rateWords = Math.round(total / overallTime);
-  else
-    rateWords = Math.round(i / overallTime);
-  txt += `</br>Time: ${overallTime}s (${rateWords}/s)`;
   statusCounts.innerHTML = txt;
 }
 
@@ -2202,6 +2210,6 @@ window.processRangeInteger = processRangeInteger;
 </script>
 
 </br>
-</br>2025-07-17 o
+</br>2025-07-23 i
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
