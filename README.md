@@ -61,7 +61,8 @@ Suggestions:
 {
   font:{
     name:'MyFontName',
-    version:'Exact Version'
+    version:'Exact Version',
+    //glyphNames: true,     // if we are referring to Glyph Names in the definitions
   },  // Warning if different
 
   // 'n'  = Near
@@ -124,7 +125,33 @@ Ranges and group references are also supported in most fields:
 …
 ```
 
+# Glyph Names
+You can use either GIDs or glyph names in the definitions for glyph and/or sets.
 
+The logic is as follows:
+- The text is matched at the start of the glyph name
+- If the text ends in a digit (0-9) then this is assumed to match to the end
+- If you want to match a single name (e.g. "HAMZA_ABOVE" and not "HAMZA_ABOVE.one") then end the text with '$' - e.g. "HAMZA_ABOVE$" will perform an exact match
+- If the text starts with a dot, the string is searched anywhere, not just at the beginning, e.g. ".m"
+- The text is treated as a regular expression.
+  - Be aware that to match a dot, you need '\.'
+  - Expressions like ".[1234]" will search for specific numbers
+  - NOTE: you cannot use the '-' character, as this is detected as a GID range!
+
+
+Examples:
+- "TE" will match all derivatives, e.g. "TEm16", "TEi3" etc
+- "TEm" will match all "TEm16", "TEm2", but not "TEi3" etc
+- "TEm1" will only match "TEm1" and will not match "TEm16"
+- ".Em" will find "BEm1", "TEm2", etc
+- ".\.one" will find "HAMZA_ABOVE.one" etc
+
+_Suggest you add to the `font` section the line `glyphNames: true,` to ensure the JSON will verify there are names in the font file._
+
+
+> If a string match no glyphs, you will see either an error `Error: Group/Range error "GLYPHNOTTHERE"` or `TypeError: Cannot read properties of null (reading 'GLYPHNOTTHERE')` (where 'GLYPHNOTTHERE' is the string you hoped was a glyph name)
+> 
+> (Use the "Copy Glyph Names" to copy and then paste into a text editor to see the names available.)
 
 # Technical Details
 Please see: https://github.com/MattMatic/font-force-field/blob/main/TECHNICAL.md

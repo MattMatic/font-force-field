@@ -202,6 +202,8 @@ table .dropdown-content {
   </td></tr>
   <tr><td>Options:</td><td>
     <input type="checkbox" id="cbShowGids" checked><label for="cbShowGids">GIDs</label>
+    <input type="checkbox" id="cbShowGidNames" disabled><label for="cbShowGidNames">Names</label>
+    <button onclick="copyGlyphNames();" id="btnCopyGlyphNames" disabled>Copy Glyph Names</button>
   </td></tr>
   <tr><td>Collisions:</td><td><span style='color:red' id='colNotify'></span></td></tr>
   <tr><td>Too Far:</td><td><span style='color:red' id='farNotify'></span></td></tr>
@@ -372,6 +374,7 @@ function UpdateListener(id, event, foo) {
 }
 
 UpdateListener('cbShowGids', 'input');
+UpdateListener('cbShowGidNames', 'input');
 UpdateListener('colourGlyph', 'input');
 UpdateListener('colourSolid', 'input');
 UpdateListener('showSliders', 'input', rangeChange);
@@ -448,6 +451,18 @@ function updateScriptLanguage() {
   hbTest.setScriptLanguage(script, language);
   updateValues();
 }
+
+function copyGlyphNames() {
+  let max = hbTest.otFont?.glyphs?.length;
+  let txt = `Glyph Data: ${hbTest?.fontName?.fullName}, ${hbTest?.fontName?.version}\r\n\r\n`;
+  for (let i=0; i<max; i++) {
+    let name = hbTest.getGlyphName(i);
+    if (!name) name = '';
+    txt += `${i},${name}\r\n`;
+  }
+  navigator.clipboard.writeText(txt);
+}
+
 </script>
 <script type='module'>
 "use strict";
@@ -485,6 +500,13 @@ function loadTheFont(blob) {
   window.fontBlob = blob;
   hbTest.setFontBlob(blob);
   updateScriptLanguage();
+  if (hbTest.haveGlyphNames) {
+    cbShowGidNames.disabled = false;
+    btnCopyGlyphNames.disabled = false;
+  } else {
+    cbShowGidNames.disabled = true;
+    btnCopyGlyphNames.disabled = true;
+  }
   fontInfo.innerHTML = hbTest.fileDescription;
 }
 
@@ -520,6 +542,30 @@ function isAssigned(obj) {
   return true;
 }
 
+function processGlyphName(txt, func) {
+  if (txt.startsWith('.')) {
+    // Allow for search anywhere
+    txt = txt.substr(1);
+  } else {
+    txt = '^'+txt;  // Starts with
+  }
+  const endsWithDigit = new RegExp('[0-9]$');
+  if (endsWithDigit.test(txt)) {
+    txt += '$';
+  }
+  const re = new RegExp(txt);
+  const max = hbTest.otFont?.glyphs?.length;
+  let found = false;
+  for (let i=0; i<max; i++) {
+    const name = hbTest.getGlyphName(i);
+    if (re.test(name)) {
+      found = true;
+      func(i);
+    }
+  }
+  return found;
+}
+
 function processRangeInteger(txt, groupSet, func) {
   var count = 0;
   if (typeof txt === 'number') {
@@ -539,6 +585,9 @@ function processRangeInteger(txt, groupSet, func) {
         func(parseInt(v));
         count++;        
       } else
+      if (processGlyphName(v, func)) {
+        // Found!
+      } else
       if (groupSet[v]) {
         for (let vv of groupSet[v]) {
           func(vv);
@@ -550,6 +599,7 @@ function processRangeInteger(txt, groupSet, func) {
       }
     }
     else {
+      // TODO(maybe?): handle ranges of glyph names     
       const rangeFrom = parseInt(range[0]);
       const rangeTo = parseInt(range[1]);
       if (rangeTo <= rangeFrom) {
@@ -910,9 +960,23 @@ class HarfBuzzForceFieldClass {
     this.font = hb.createFont(this.face);
     this.otFont = opentype.parse(fb);
     this.otLayout = new Layout(this.otFont, 'GPOS');
+
+    this.haveGlyphNames = false;
+    const max = this.otFont?.glyphs?.length;
+    for (let i=0;i<max;i++) {
+      if (this.getGlyphName(i)) {
+        this.haveGlyphNames = true;
+        break;
+      }
+    }
   }
   getGlyphClass(gid) {
     return this.otLayout.getGlyphClass(this.otFont.tables.gdef.classDef, gid);
+  }
+  getGlyphName(gid) {
+    const glyphData = this.otFont?.glyphs?.get(gid);
+    if (!glyphData) return undefined;
+    return glyphData.name;
   }
   isMarkClass(gid) {
     return (this.getGlyphClass(gid) === 3);
@@ -1221,15 +1285,19 @@ class HarfBuzzForceFieldClass {
         res.push(v);
       else
       if (typeof v === 'string') {
-        const group = this.groups[v];
-        if (group) {
-          const size = group.length;
-          for (let ii=0;ii<size;ii++) {
-            const g = group[ii];            
-            if (typeof g === 'number') {
-              res.push(g);
-            } else {
-              throw new Error('Group "'+v+'" recursion!');
+        if (!processGlyphName(v, (gid) => {
+          res.push(gid);
+        })) {
+          const group = this.groups[v];
+          if (group) {
+            const size = group.length;
+            for (let ii=0;ii<size;ii++) {
+              const g = group[ii];            
+              if (typeof g === 'number') {
+                res.push(g);
+              } else {
+                throw new Error('Group "'+v+'" recursion!');
+              }
             }
           }
         } else {
@@ -1621,6 +1689,7 @@ function updateJSON() {
       }
     }
   } catch (e) {
+    console.log(e);//~~~~
     jsonError.innerText = e;
   }
   if (fontCompare) {
@@ -1631,6 +1700,11 @@ function updateJSON() {
     } else
     if (version && version !== hbTest.fontName.version) {
       jsonError.innerText = `Font version does not match "${version}"!`;
+    } else
+    if (fontCompare.glyphNames) {
+      if (!hbTest.haveGlyphNames) {
+        jsonError.innerText = `Font does not appear to have glyph names!`;
+      }
     }
   }
 
@@ -1702,6 +1776,7 @@ function processWord(word, display) {
   var n=0;  // the result index
   const solidColour = colourSolid.checked;
   const showGids = cbShowGids.checked;
+  const showGidNames = cbShowGidNames.checked;
 
   result.forEach(function(x) {
     colourIndex++;
@@ -1752,13 +1827,21 @@ function processWord(word, display) {
       }
     }
     // show GID
-    if (display && showGids) {
+    if (display && (showGids || showGidNames)) {
       const fontSize = 100;
       const yOfs = pos.y + 660 + (n % 4) * 110;
       const xOfs = pos.x + 0;
+      const name = hbTest.getGlyphName(x.g);
       var gidtype = '';
-      if (ismark) gidtype='\'';
-      hbTest.svgData += `<text font-size="${fontSize}" x="${xOfs}" y="${yOfs}" fill="${colorText}">${gidtype}${x.g}</text>`;
+      let gidDisplay = '';
+      if (ismark) gidDisplay ='\'';
+      if (showGids)
+        gidDisplay += `${x.g}`;
+      if (showGidNames && name) {
+        if (showGids) gidDisplay += ':';
+        gidDisplay += name;
+      }
+      hbTest.svgData += `<text font-size="${fontSize}" x="${xOfs}" y="${yOfs}" fill="${colorText}">${gidDisplay}</text>`;
     }
     pos.x += x.ax;
     pos.y += x.ay;
@@ -2321,6 +2404,6 @@ window.processRangeInteger = processRangeInteger;
 </script>
 
 </br>
-</br>2025-07-24 o
+</br>2025-11-06 n
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
