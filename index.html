@@ -576,25 +576,31 @@ function processRangeInteger(txt, groupSet, func) {
     throw new Error('Group/Range error "'+v+'"');
     return 0;
   }
+  const hasLetters = new RegExp('[A-Z][a-z]');
   var sets = txt.split(',');
   for (let set of sets) {
-    var range = set.split('-');
+    let range;
+    if (hasLetters.test(set)) {
+      range = [set];
+    } else {
+      range = set.split('-');
+    }
     if (range.length === 1) {
       const v = range[0];
       if (!isNaN(v)) {
         func(parseInt(v));
         count++;        
       } else
-      if (processGlyphName(v, func)) {
-        // Found!
-      } else
       if (groupSet[v]) {
         for (let vv of groupSet[v]) {
           func(vv);
           count++;
         }
-      }
-      else {
+      } else
+      if (processGlyphName(v, func)) {
+        // Found!
+      } else
+      {
         throw new Error('Group/Range error "'+v+'"');
       }
     }
@@ -1285,21 +1291,22 @@ class HarfBuzzForceFieldClass {
         res.push(v);
       else
       if (typeof v === 'string') {
-        if (!processGlyphName(v, (gid) => {
-          res.push(gid);
-        })) {
-          const group = this.groups[v];
-          if (group) {
-            const size = group.length;
-            for (let ii=0;ii<size;ii++) {
-              const g = group[ii];            
-              if (typeof g === 'number') {
-                res.push(g);
-              } else {
-                throw new Error('Group "'+v+'" recursion!');
-              }
+        const group = this.groups[v];
+        if (group) {
+          const size = group.length;
+          for (let ii=0;ii<size;ii++) {
+            const g = group[ii];            
+            if (typeof g === 'number') {
+              res.push(g);
+            } else {
+              throw new Error('Group "'+v+'" recursion not allowed!');
             }
           }
+        } else
+        if (processGlyphName(v, (gid) => {
+          res.push(gid);
+        })) {
+          // we added at least one GID
         } else {
           // Missing group!
           throw new Error('Group "'+v+'" not found!');
@@ -2404,6 +2411,6 @@ window.processRangeInteger = processRangeInteger;
 </script>
 
 </br>
-</br>2025-11-06 n
+</br>2025-11-11 g
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
