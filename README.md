@@ -153,5 +153,14 @@ _Suggest you add to the `font` section the line `glyphNames: true,` to ensure th
 > 
 > (Use the "Copy Glyph Names" to copy and then paste into a text editor to see the names available.)
 
+# JavaScript Debug Functions
+There are some useful functions to help diagnose issues (use the Developer Console).
+
+- `list.gids(TXT)` - list all the glyph IDs, where TXT is a range, a group name, or glyph name prefix (or regular expression).
+- `list.groups()` - show all group names
+- `list.group(NAME)` - show the source text and glyph IDs for the specified group NAME.
+- `list.overlaps(GID)` or `list.overlaps()` - show the overlaps that GID is part of (or show all overlaps). Shows the index, the source text, and the glyph IDs.
+- `list.bar()` - show the glyph IDs for the bar feature.
+
 # Technical Details
 Please see: https://github.com/MattMatic/font-force-field/blob/main/TECHNICAL.md

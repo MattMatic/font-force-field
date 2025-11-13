@@ -1321,6 +1321,7 @@ class HarfBuzzForceFieldClass {
     this.bar.area = barObject.area; // An array of either y1,y2 or x1,y1,x2,y2
     this.bar.gids = this.gidArrayExpand(barObject.gids); // A plain array of gids
     this.bar.far  = barObject.far;  // Whether to include the bar in the far 
+    this.bar.src = String(barObject);
 
     if (this?.bar?.cpaths64)
       this.bar.cpaths64.destroy();
@@ -1369,7 +1370,9 @@ class HarfBuzzForceFieldClass {
     const size = overlapsArray.length;
     for (let i=0;i<size;i++) {
       const a = overlapsArray[i];
-      this.overlaps.push(this.gidArrayExpand(a));
+      let obj = this.gidArrayExpand(a);
+      obj.src = String(a);
+      this.overlaps.push(obj);
     }
   }
   glyphsOverlap(gid1, gid2) {
@@ -1395,6 +1398,7 @@ class HarfBuzzForceFieldClass {
         const gid = v[i];
         processRangeInteger(gid, null, function(g) {group.push(g);});
       }
+      group.src = String(v);
       obj.groups[k] = group;
     });
   }
@@ -2396,6 +2400,95 @@ function saveResults() {
   a.click();
 }
 
+// Debug function
+function listGids(gid) {
+  if (!gid) {
+    return '!Need a GID number or name!';
+  }
+  let txt = '';
+  let count = 0;
+  processRangeInteger(gid, hbTest.groups,
+    function (g) {
+      if (txt.length > 0) txt += ', ';
+      txt += `${g}`;
+      count++;
+    });
+  console.log(`"${gid}" -> ${txt}`);
+  return count;
+}
+
+function listOverlaps(gid) {
+  if (!hbTest.overlaps) {
+    return '!No overlaps defined.';
+  }
+  let count = 0;
+  const max = hbTest.overlaps.length;
+  for (let i=0; i<max; i++) {
+    const set = hbTest.overlaps[i];
+    if (!gid || set.includes(gid)) {
+      let txt = '';
+      count++;
+      set.forEach( function(v) {
+        if (txt.length > 0) txt += ', ';
+        txt += `${v}`;
+      });
+      console.log(`${i}: '${set.src}' = ${txt}`);
+    }
+  }
+  return count;
+}
+
+function listGroup(groupName) {
+  const group = hbTest?.groups[groupName];
+  if (!group) {
+    return '!Group not found';
+  }
+  let count = 0;
+  let txt = '';
+  for (let vv of group) {
+    if (txt.length > 0) txt += ', ';
+    txt += `${vv}`;
+    count++;
+  }
+  txt = `"${groupName}" => '${group.src}' => ${txt}`;
+  console.log(txt);
+  return count;
+}
+
+function listGroups() {
+  const groups = hbTest?.groups;
+  if (!groups) {
+    return '!No groups defined';
+  }
+  let txt = '';
+  let count = 0;
+  for (let key in groups) {
+    if (txt.length > 0) txt += ', ';
+    txt += `'${key}'`;
+    count++;
+  }
+  console.log(txt);
+  return count;
+}
+
+function listBar() {
+  const bar = hbTest.bar;
+  if (!bar) {
+    return '!No bar defined';
+  }
+  let txt = '';
+  let count = 0;
+  const max = bar.gids.length;
+  for (let i=0; i<max; i++) {
+    const g = bar.gids[i];
+    if (txt.length > 0) txt += ', ';
+    txt += `${g}`;
+    count++;
+  }
+  console.log(`gids: ${txt}`);
+  return count;
+}
+
 window.updateValues = updateValues;
 window.updateJSON = updateJSON;
 window.rateWordList = rateWordList;
@@ -2407,10 +2500,17 @@ window.opentype = opentype;
 window.Layout = Layout;
 window.updateTransfer = updateTransfer;
 window.processRangeInteger = processRangeInteger;
+window.list = {
+  gids: listGids,
+  overlaps: listOverlaps,
+  group: listGroup,
+  groups: listGroups,
+  bar: listBar,
+}
 
 </script>
 
 </br>
-</br>2025-11-11 i
+</br>2025-11-13 h
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
