@@ -471,6 +471,8 @@ function copyGlyphNames() {
   navigator.clipboard.writeText(txt);
 }
 
+let debugSkipFarQuantifier = false;
+
 </script>
 <script type='module'>
 "use strict";
@@ -909,6 +911,8 @@ class HarfBuzzForceFieldClass {
     this.glyphValues = {};
     this.svgData = '';
     this.clearDefaults();
+    this.setFarValues([10,25,50]);
+    this.farValueOk = false;
   }
   clearDefaults() {    
     this.defaults = {};
@@ -1173,6 +1177,12 @@ class HarfBuzzForceFieldClass {
       let gs = new GlyphSet(glyphId, cpaths64);
       gs.addInflated('near', nearInflate);
       gs.addInflated('far',  farInflate);
+      
+      for (let i=0;i<this.farValues.length;i++) {
+        const p = this.farValues[i];
+        gs.addInflated(`far${i}`, farInflate * (1 + p/100.0)); // 110% to 190%
+      }
+      
       if ((typeof(gb.nearBase) !== 'undefined') && (gb.nearBase !== null)) {
         gs.addInflated('nearBase',  gb.nearBase);
       }
@@ -1412,6 +1422,15 @@ class HarfBuzzForceFieldClass {
   }
   getGroup(id) {
     return this.groups[id];
+  }
+  setFarValues(arr) {
+    this.farValues = arr;
+    // Sort descending
+    this.farValues.sort(function(a,b) {
+      if (a < b) return 1;
+      if (a > b) return -1;
+      return 0;
+    });
   }
 }
 
@@ -1694,6 +1713,12 @@ function updateJSON() {
       if (key === 'defaults') {
         hbTest.defaults.clusterOverlap = data[key].cl;
       }
+      else
+      if (key === 'far') {
+        const values = data[key].values;
+        if (values) hbTest.setFarValues(values);
+        hbTest.farValueOk = data[key].ok;
+      }
       else {
         if (typeof key === 'string') {
           const n  = getOldOrNew(data[key].min, data[key].n);
@@ -1745,6 +1770,38 @@ function updateJSON() {
 // Used for colouration of glyphs or clusters
 const glyphColors = ['#bb87e3','#bc6b0e','#57118c','#64902e','#91bbec','#d65e02','#1d5799','#984c11','#271909'];
 
+// Use specified `id` of glyph expanded outline, and return how many islands of base + all
+// Called within processWord, after result has had polygons moved and applied
+function testFarValue(result, id) {
+  let overallFar   = new CPaths64();
+  let overallMarks = new CPaths64();
+  result.forEach(function(x) {
+    const gs = x.gs;
+    if (hbTest.isMarkClass(x.g)) {
+      //ismark = true;
+      overallMarks.unionWith(gs.path(id));
+    } else {
+      if (!hbTest.bar?.far && hbTest.glyphInBars(x.g))
+        overallFar.unionWith(gs.path('farBar')); // TODO: handle different?
+      else
+        overallFar.unionWith(gs.path(id));
+    }
+  });
+  let islandsBase = overallFar.countIslands();
+  overallFar.unionWith(overallMarks);
+  let islandsAll = overallFar.countIslands();
+
+  overallFar.freePath();
+  overallMarks.freePath();
+
+  return {
+    base: islandsBase,
+    all : islandsAll,
+    fb  : (islandsBase > 1),
+    fm  : (islandsAll > islandsBase),
+    ok  : (islandsAll == 1),
+  }
+}
 
 function processWord(word, display) {
   var wordRating = '';
@@ -2011,20 +2068,45 @@ function processWord(word, display) {
   }
 
   txt = '';
-  if (islandsBase > 1) {
-    if (islandsAll == 1) {
-      wordRating += 'ok,';
-      txt += 'Ok? ';
-      collisionCounts.okMaybe = 1;
+  if ((islandsBase > 1) || (islandsAll > 1)) {
+    const fb = islandsBase > 1;
+    const fm = islandsAll > islandsBase;
+    const ok = islandsAll == 1;
+
+    let fbn = 0;
+    let fmn = 0;
+    let okn = hbTest.farValues[hbTest.farValues.length-1];
+    if (ok) okn = 0;
+    const skipOk = !hbTest.farValueOk;
+    if (!debugSkipFarQuantifier) {
+      for (let i=0;i<hbTest.farValues.length;i++) {
+        const p = hbTest.farValues[i];
+        const test = testFarValue(result, `far${i}`);
+        if (test.fb && (p > fbn)) fbn = p;
+        if (test.fm && (p > fmn)) fmn = p;
+        if (test.ok && (p < okn)) okn = p;
+        if ((test.fb || !fb) && (test.fm || !fm) && (ok || skipOk)) {
+          break;    // No point continuing
+        }
+      }
     }
-    wordRating += 'fb,';
-    txt += 'Base ';
-    collisionCounts.farBase = 1;
-  }
-  if (islandsAll > islandsBase) {
-    wordRating += 'fm,';
-    txt += 'Marks';
-    collisionCounts.farMark = 1;
+
+    if (fb) {
+      if (!skipOk) wordRating += `ok${okn},`;
+      if (ok) {
+        if (skipOk) wordRating += 'ok,';
+        txt += 'Ok? ';
+        collisionCounts.okMaybe = 1;
+      }
+      wordRating += `fb${fbn},`;
+      txt += 'Base ';
+      collisionCounts.farBase = 1;
+    }
+    if (fm) {
+      wordRating += `fm${fmn},`;
+      txt += 'Marks';
+      collisionCounts.farMark = 1;
+    }
   }
   if (display)
     farNotify.innerText = txt;
@@ -2114,14 +2196,18 @@ class wordEntryClass {
     r = note.match(/ca:(\d+)/);
     if (r) txt += `\t${r[1]}`; else txt += '\t';
 
-    r = note.match(/ok/);
-    if (r) txt += `\tok`; else txt += '\t';
+    r = note.match(/ok(\d*)/);
+    if (this.farValueOk) {
+      if (r) txt += `\t${r[1] || '0'}`; else txt += '\t';
+    } else {
+      if (r) txt += `\tok`; else txt += '\t';
+    }
 
-    r = note.match(/fb/);
-    if (r) txt += `\tfb`; else txt += '\t';
+    r = note.match(/fb(\d*)/);
+    if (r) txt += `\t${r[1] || '0'}`; else txt += '\t';
 
-    r = note.match(/fm/);
-    if (r) txt += `\tfm`; else txt += '\t';
+    r = note.match(/fm(\d*)/);
+    if (r) txt += `\t${r[1] || '0'}`; else txt += '\t';
 
     // Finish the line
     while (txt.endsWith('\t')) {
@@ -2546,6 +2632,6 @@ window.list = {
 </script>
 
 </br>
-</br>2025-11-20 i
+</br>2025-11-20 m
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>

@@ -74,6 +74,13 @@ Suggestions:
 
   mark:{n:10, nb:5, f:100},
 
+  // Optional overrides of far fields measurements for rating
+  // The more values, the longer the rating process takes!
+  far:{
+    values:[10,25,50],  // (default) => 110%, 125%, 150%
+    ok: true,           // (default is false). True will scan for ok percentage (takes even longer)
+  },
+
   // GID specific (use quotes around numbers)
   '643':{n:'120%',f:'200%'},  // Using percentages
   '644':{n:15,    f:50},      // Explicit values
