@@ -455,10 +455,18 @@ function updateScriptLanguage() {
 function copyGlyphNames() {
   let max = hbTest.otFont?.glyphs?.length;
   let txt = `Glyph Data: ${hbTest?.fontName?.fullName}, ${hbTest?.fontName?.version}\r\n\r\n`;
+  let glyphSet = new Set();
+  for (const [key, value] of Object.entries(hbTest.glyphValues)) {
+    glyphSet.add(Number(key));
+  }
   for (let i=0; i<max; i++) {
     let name = hbTest.getGlyphName(i);
     if (!name) name = '';
-    txt += `${i},${name}\r\n`;
+    txt += `${i}\t${name}`;
+    if (!glyphSet.has(i)) {
+      txt += `\t*`;
+    }
+    txt += '\r\n';
   }
   navigator.clipboard.writeText(txt);
 }
@@ -2089,7 +2097,33 @@ class wordEntryClass {
   getNote()     { return this.note; }
   // The line for the check list file output
   getLine() {
-    var txt = this.word + '\t' + (this.note || '') ;
+    const note = this.note || '';
+    var txt = this.word + '\t' + note;
+    // Now expand the note into separate columns
+    // Order: GG#,cb#,cx#,ca:#,ok,fb,fm
+    let r,v;
+    r = note.match(/GG(\d+)/);
+    if (r) txt += `\t${r[1]}`; else txt += '\t';
+
+    r = note.match(/cb(\d+)/);
+    if (r) txt += `\t${r[1]}`; else txt += '\t';
+
+    r = note.match(/cx(\d+)/);
+    if (r) txt += `\t${r[1]}`; else txt += '\t';
+
+    r = note.match(/ca:(\d+)/);
+    if (r) txt += `\t${r[1]}`; else txt += '\t';
+
+    r = note.match(/ok/);
+    if (r) txt += `\tok`; else txt += '\t';
+
+    r = note.match(/fb/);
+    if (r) txt += `\tfb`; else txt += '\t';
+
+    r = note.match(/fm/);
+    if (r) txt += `\tfm`; else txt += '\t';
+
+    // Finish the line
     while (txt.endsWith('\t')) {
       txt = txt.slice(0, txt.length-1);
     }
@@ -2383,6 +2417,7 @@ function saveResults() {
   txt += '\t########################################\r\n';
   txt += '\t#          Stats:  \t'+statusCounts.innerText.replace(/[\r\n]+/g, '; ')+'\r\n';
   txt += '\t########################################\r\n';
+  txt += '\t#Word\tNote\tGlyphGlyph(GG)\tBaseBase(cb)\tMarkBase(cx)\tArea(ca)\tOK(ok)\tFarBase(fb)\tFarMark(fm)\r\n';
 
   const size = wordList.length;
   while (i < size) {
@@ -2511,6 +2546,6 @@ window.list = {
 </script>
 
 </br>
-</br>2025-11-13 h
+</br>2025-11-20 i
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </html>
