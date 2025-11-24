@@ -543,9 +543,13 @@ function debugGlyphNames() {
     fieldSet.add(Number(key));
   }
   let overlapSet = new Set();
-  hbTest.overlaps.forEach((v,i)=> { v.forEach((v,i)=>{overlapSet.add(v);}); });
+  if (hbTest.overlaps) {
+    hbTest.overlaps.forEach((v,i)=> { v.forEach((v,i)=>{overlapSet.add(v);}); });
+  }
   let barSet = new Set();
-  hbTest.bar.gids.forEach((v,i)=> { barSet.add(v); });
+  if (hbTest.bar) {
+    hbTest.bar.gids.forEach((v,i)=> { barSet.add(v); });
+  }
 
   for (let i=0; i<max; i++) {
     let name = hbTest.getGlyphName(i);
@@ -3002,7 +3006,7 @@ window.list = {
 </script>
 
 </br>
-</br>2025-11-24 m
+</br>2025-11-24 n
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
