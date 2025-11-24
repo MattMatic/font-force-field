@@ -134,24 +134,24 @@ Ranges and group references are also supported in most fields:
 
 # Glyph Names
 You can use either GIDs or glyph names in the definitions for glyph and/or sets.
+By default, the wildcard matching is similar to DOS filename matching.
 
-The logic is as follows:
-- The text is matched at the start of the glyph name
-- If the text ends in a digit (0-9) then this is assumed to match to the end
-- If you want to match a single name (e.g. "HAMZA_ABOVE" and not "HAMZA_ABOVE.one") then end the text with '$' - e.g. "HAMZA_ABOVE$" will perform an exact match
-- If the text starts with a dot, the string is searched anywhere, not just at the beginning, e.g. ".m"
-- The text is treated as a regular expression.
-  - Be aware that to match a dot, you need '\.'
-  - Expressions like ".[1234]" will search for specific numbers
-  - NOTE: you cannot use the '-' character, as this is detected as a GID range!
-
+Definition:
+- `START` - begins with
+- `MATCH$` - full match
+- `*END`  - ends with
+- `START*END` - starts and ends with
+- `START*MID*` - starts with and contains
+- `START*MID*END` - starts with, contains, and ends with.
+- `/REGEXP/` - regular expression
 
 Examples:
-- "TE" will match all derivatives, e.g. "TEm16", "TEi3" etc
-- "TEm" will match all "TEm16", "TEm2", but not "TEi3" etc
-- "TEm1" will only match "TEm1" and will not match "TEm16"
-- ".Em" will find "BEm1", "TEm2", etc
-- ".\.one" will find "HAMZA_ABOVE.one" etc
+- `TE` will match all derivatives, e.g. "TEm16", "TEi3" etc
+- `TEm` will match all "TEm16", "TEm2", but not "TEi3" etc
+- `TEm1` will only match "TEm1" and will not match "TEm16"
+- `*Em*`` will find "BEm1", "TEm2", etc
+- `*.one` will find "HAMZA_ABOVE.one" etc
+
 
 _Suggest you add to the `font` section the line `glyphNames: true,` to ensure the JSON will verify there are names in the font file._
 
@@ -168,6 +168,8 @@ There are some useful functions to help diagnose issues (use the Developer Conso
 - `list.group(NAME)` - show the source text and glyph IDs for the specified group NAME.
 - `list.overlaps(GID)` or `list.overlaps()` - show the overlaps that GID is part of (or show all overlaps). Shows the index, the source text, and the glyph IDs.
 - `list.bar()` - show the glyph IDs for the bar feature.
+
+> NOTE: the Debug dialog shows more comprehensive outputs.
 
 # Technical Details
 Please see: https://github.com/MattMatic/font-force-field/blob/main/TECHNICAL.md
