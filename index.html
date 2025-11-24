@@ -104,6 +104,28 @@ table .dropdown-content {
   border-color: transparent transparent #555 transparent;
 }
 
+dialog::backdrop {
+  background-color: hsl(60, 40%, 50%, 0.5);
+}
+dialog {
+  background-color: #e8ece8;
+}
+[aria-label="close"] {
+  appearance: none;
+  background-color: #fcc;
+  float: right;
+  border: 1px solid;
+  border-radius: 50%;
+}
+#debugInput {
+  font-family: "Lucida Console", monospace;
+  font-size: 100%;
+}
+#debugOutput {
+  font-family: "Lucida Console", monospace;
+  font-size: 100%;
+  background-color: #eee;
+}
 </style>
 <script type="text/javascript" src="js/hb.js"></script> <!-- Module - REQUIRED -->
 <script type="text/javascript" src="js/hbjs.js"></script>
@@ -165,7 +187,7 @@ table .dropdown-content {
 <table width='100%' id='jsonTable'>
   <tr><td width='25%'>JSON:</td>
     <td>
-      <textarea style="width:60%" id="jsonText" cols='40' rows='8' wrap='off' oninput="updateJSON();">
+      <textarea style="width:90%" id="jsonText" cols='40' rows='8' wrap='off' oninput="updateJSON();">
 //** Drag and Drop .json or .txt **//
 
 // e.g.
@@ -197,13 +219,37 @@ table .dropdown-content {
 </span>
 <table width='100%'>
   <tr><td width='25%'>Colours:</td><td>
+    <input type="checkbox" id="cbShowGlyphs" checked><label for="cbShowGlyphs">Glyphs</label>
     <input type='radio' id='colourGlyph' name='renderColour' value='glyph' checked>Glyph</input>
     <input type='radio' id='colourSolid' name='renderColour' value='solid'>Solid</input>
+  </td></tr>
+  <tr><td>Fields:</td><td>
+    <input type="checkbox" id="cbShowNear" checked><label for="cbShowNear">Near</label>
+    <input type="checkbox" id="cbShowNearBase" checked><label for="cbShowNearBase">Near Base</label>
+    <input type="checkbox" id="cbShowFar" checked><label for="cbShowFar">Far</label>
+    <input type="checkbox" id="cbShowFarMarks" checked><label for="cbShowFarMarks">Far Marks</label>
+    <input type="checkbox" id="cbShowCollisions" checked><label for="cbShowCollisions">Collisions</label>
   </td></tr>
   <tr><td>Options:</td><td>
     <input type="checkbox" id="cbShowGids" checked><label for="cbShowGids">GIDs</label>
     <input type="checkbox" id="cbShowGidNames" disabled><label for="cbShowGidNames">Names</label>
-    <button onclick="copyGlyphNames();" id="btnCopyGlyphNames" disabled>Copy Glyph Names</button>
+    <!--<button onclick="copyGlyphNames();" id="btnCopyGlyphNames" disabled>Copy Glyph Names</button>-->
+    <button onclick="dialogDebug.showModal();" id="btnDebug">Debug</button>
+    <dialog id="dialogDebug">
+      <button type="submit" aria-label="close" onclick="dialogDebug.close();">X</button>
+      <h2>Debug</h2>
+      <!--<form>-->
+        <input type="text" id="debugInput"/><br/>JSON:<span id="debugJson"></span><br/>
+        <button onclick="debugGlyphNames();" id="btnDebugNames" title="Show all glyph names">Names</button> 
+        <button onclick="debugGroups();" id="btnDebugGroups" title="Show all JSON groups">Groups</button> 
+        <button onclick="debugGroup();" id="btnDebugGroup" title="Show group info for the input text">Group</button> 
+        <button onclick="debugGIDs();" id="btnDebugGIDs" title="Show the glyph IDs for the input text (group, wildcard, regexp)">GIDs</button> 
+        <button onclick="debugOverlaps();" id="btnDebugOverlaps" title="Show all overlap sets for the GID in the input field">Overlaps</button>
+        <button onclick="debugBar();" id="btnDebugBar" title="Show all the GIDs in the bar set">Bar</button><br/>
+        <textarea id="debugOutput" style="width:100%;" cols='60' rows='32' wrap='off' style='font-family:monospace;'></textarea>
+        <br/><button onclick="debugCopy();">Copy to Clipboard</button>
+      <!--</form>-->
+    </dialog>
   </td></tr>
   <tr><td>Collisions:</td><td><span style='color:red' id='colNotify'></span></td></tr>
   <tr><td>Too Far:</td><td><span style='color:red' id='farNotify'></span></td></tr>
@@ -244,7 +290,6 @@ viewBox="-250 -1800 1500 1000" preserveAspectRatio="none"
   <button id="zoomOutSVG" onclick="zoomSVG(-1);">-</button>
   <button id="zoomResetSVG" onclick="zoomSVG(0);" title="Middle click or Shift-Left and drag to pan the SVG">100%</button>
   <button id="zoomInSVG" onclick="zoomSVG(1);">+</button>
-</body>
 
 <script>
 "use strict";
@@ -373,12 +418,22 @@ function UpdateListener(id, event, foo) {
   }
 }
 
+UpdateListener('cbShowFar', 'input');
+UpdateListener('cbShowFarMarks', 'input');
+UpdateListener('cbShowNear', 'input');
+UpdateListener('cbShowNearBase', 'input');
+UpdateListener('cbShowGlyphs', 'input');
+UpdateListener('cbShowCollisions', 'input');
+
 UpdateListener('cbShowGids', 'input');
 UpdateListener('cbShowGidNames', 'input');
 UpdateListener('colourGlyph', 'input');
 UpdateListener('colourSolid', 'input');
 UpdateListener('showSliders', 'input', rangeChange);
 UpdateListener('showJSON', 'input', rangeChange);
+
+UpdateListener('debugInput', 'input', debugInputChange);
+UpdateListener('debugOutput', 'dblclick', debugOutputDblClick);
 
 
 var hbfcwl = null;
@@ -471,6 +526,210 @@ function copyGlyphNames() {
   navigator.clipboard.writeText(txt);
 }
 
+function debugOutputText(txt) {
+  debugOutput.value = txt;
+}
+
+function debugOutputError(err) {
+  debugOutputText('ERROR:'+err);
+}
+
+function debugGlyphNames() {
+  let max = hbTest.otFont?.glyphs?.length;
+  let txt = `Glyph Data: ${hbTest?.fontName?.fullName}, ${hbTest?.fontName?.version}\r\n\r\n`;
+  let fieldSet = new Set();
+  for (const [key, value] of Object.entries(hbTest.glyphValues)) {
+    fieldSet.add(Number(key));
+  }
+  let overlapSet = new Set();
+  hbTest.overlaps.forEach((v,i)=> { v.forEach((v,i)=>{overlapSet.add(v);}); });
+  let barSet = new Set();
+  hbTest.bar.gids.forEach((v,i)=> { barSet.add(v); });
+
+  for (let i=0; i<max; i++) {
+    let name = hbTest.getGlyphName(i);
+    if (!name) name = '';
+    txt += `${i}\t`;
+    txt += fieldSet.has(i)   ? 'f' : ' ';
+    txt += overlapSet.has(i) ? 'o' : ' ';
+    txt += barSet.has(i)     ? 'b' : ' ';
+    txt += `\t${name}`;
+    txt += '\r\n';
+  }
+  debugOutputText(txt);
+}
+
+function debugGIDs() {
+  const gid = debugInput.value;
+  if (!gid) {
+    debugOutputError('!Need a GID number or name!');
+    return;
+  }
+  let txt = `"${gid}"\r\n`;
+  let count = 0;
+  const hasLetters = String(gid).search(/[A-Za-z\{\}\$\.]/) >= 0;
+  try {
+    processRangeInteger(gid, hbTest.groups,
+      function (g) {
+        const name = hbTest.getGlyphName(g);
+        txt += `  ${g}\t${name || ''}\r\n`;
+        count++;
+      });
+    //console.log(`"${gid}" ->\r\n${txt}`);
+    txt = `Count: ${count}\r\n` + txt;
+  } catch(e) {
+    debugOutputError(e.message);
+    return;
+  }
+  debugOutputText(txt);
+}
+
+function debugGroup() {
+  const groupName = debugInput.value;
+  let countGlyph = 0;
+  let countGroup = 0;
+  let txt = '';
+  for (let [key, group] of Object.entries(hbTest?.groups)) {
+    let thisGroup = ((groupName.length == 0) || (groupName == key));
+    if (!thisGroup) {
+      // Check to see if the `groupName` is a glyph name...
+      for (let vv of group) {
+        const name = hbTest.getGlyphName(vv);
+        if ((name == groupName) || (vv == parseInt(groupName))) {
+          thisGroup = true;
+          break;
+        }
+      }
+    }
+    if (thisGroup) {
+      countGroup++;
+      txt += `#${countGroup}:"${key}" => '${group.src}'\r\n`;      
+      for (let vv of group) {
+        countGlyph++;
+        const name = hbTest.getGlyphName(vv);
+        txt += `  ${vv}\t${name || ''}\r\n`;
+      }
+      txt += '\r\n\r\n';
+    }
+  };
+  txt = `"${groupName}"\r\nGroups:${countGroup}, Glyphs:${countGlyph}\r\n` + txt;
+  debugOutputText(txt);
+}
+
+function debugGroups() {
+  const groups = hbTest?.groups;
+  if (!groups) {
+    debugOutputError('!No groups defined');
+    return;
+  }
+  let txt = '';
+  let count = 0;
+  for (let key in groups) {
+    txt += `${key}\r\n`;
+    count++;
+  }
+  debugOutputText(txt);
+}
+
+function debugOverlaps() {
+  let gid = debugInput.value;
+  if (!hbTest.overlaps) {
+    debugOutputError('!No overlaps defined.');
+    return;
+  }
+  // Check if `gid` is a glyph name
+  const gn = hbTest.getGidFromName(gid);
+  if (gn)
+    gid = gn;
+  else
+    gid = Number(gid);
+
+  let count = 0;
+  let output = '';
+  const max = hbTest.overlaps.length;
+  for (let i=0; i<max; i++) {
+    const set = hbTest.overlaps[i];
+    if (!gid || set.includes(gid)) {
+      count++;
+      let txt = '';
+      set.forEach( function(v) {
+        const name = hbTest.getGlyphName(v);
+        txt += `  ${v}\t${name || ''}\r\n`;
+      });
+      output += `#${i}: '${set.src}'\r\n${txt}\r\n\r\n`;
+    }
+  }
+  output = `"${debugInput.value}"\r\nCount:${count}\r\n` + output;
+  debugOutputText(output);
+}
+
+function debugBar() {
+  const bar = hbTest.bar;
+  if (!bar) {
+    debugOutputError('!No bar defined');
+    return;
+  }
+  let txt = '';
+  let count = 0;
+  const max = bar.gids.length;
+  for (let i=0; i<max; i++) {
+    const g = bar.gids[i];
+    const name = hbTest.getGlyphName(g);
+    txt += `  ${g}\t${name || ''}\r\n`;
+    count++;
+  }
+  debugOutputText(`Bar gids:\r\n${txt}`);
+}
+
+function debugCopy() {
+  navigator.clipboard.writeText(debugOutput.value);
+}
+
+function debugInputChange(e) {
+  const txt = debugInput.value;
+  debugJson.innerText = JSON.stringify(txt);
+}
+
+function debugOutputDblClick(e) {
+  const txt = debugOutput.value;
+  let ss = debugOutput.selectionStart;
+  let se = debugOutput.selectionEnd;
+  const max = txt.length;
+  const isSpace = ' \t';
+  const isCrLf  = '\r\n';
+  while (se > ss) {
+    const ch = txt.charAt(se-1);
+    if (!isSpace.includes(ch) && !isCrLf.includes(ch)) break;
+    se--;
+  }
+  while (ss > 0) {
+    const ch = txt.charAt(ss);
+    if (isSpace.includes(ch)) {
+      ss++;
+      break;
+    }
+    if (isCrLf.includes(ch)) {
+      ss++;
+      break;
+    }
+    ss--;
+  }
+  while (se < max) {
+    const ch = txt.charAt(se);
+    if (isSpace.includes(ch)) {
+      break;
+    }
+    if (isCrLf.includes(ch)) {
+      break;
+    }
+    se++;
+  }
+  debugOutput.selectionStart = ss;
+  debugOutput.selectionEnd   = se;
+  debugInput.value = txt.slice(ss, se);
+  debugInputChange();
+}
+
 let debugSkipFarQuantifier = false;
 
 </script>
@@ -512,12 +771,11 @@ function loadTheFont(blob) {
   updateScriptLanguage();
   if (hbTest.haveGlyphNames) {
     cbShowGidNames.disabled = false;
-    btnCopyGlyphNames.disabled = false;
   } else {
     cbShowGidNames.disabled = true;
-    btnCopyGlyphNames.disabled = true;
   }
   fontInfo.innerHTML = hbTest.fileDescription;
+  disableDebugButtons();
 }
 
 function onResourcesLoaded() {
@@ -553,6 +811,7 @@ function isAssigned(obj) {
 }
 
 function processGlyphName(txt, func) {
+  /* -- old style
   if (txt.startsWith('.')) {
     // Allow for search anywhere
     txt = txt.substr(1);
@@ -563,14 +822,70 @@ function processGlyphName(txt, func) {
   if (endsWithDigit.test(txt)) {
     txt += '$';
   }
-  const re = new RegExp(txt);
+  */
+
+  //------NEW FORMAT 2025-11-21
+  //---------------------------
+  // Like DOS filename wildcards, but with regexp option
+  // `/regexp/`
+  // `start`
+  // `start*end`
+  // `start*middle*`
+  // `*end`
+  // `*middle*`
+  // And ? is single character
+  let exp = '';
+  const specials = '*+?{}[]\\$^:,-'
+  if (txt.startsWith('/') && txt.endsWith('/')) {
+    // regexp
+    exp = txt.slice(1, -1);
+  } else {
+    // Convert DOS style...
+    let hasAsterisk = false;
+    let endAnchor = false;
+    if (txt.endsWith('$')) {
+      // Partial grep syntax - to anchor to the end
+      endAnchor = true;
+      txt = txt.slice(0, txt.length-1);
+    }
+    if (txt.startsWith('*')) {
+      hasAsterisk = true;
+      txt = txt.slice(1);
+    } else {
+      exp += '^'; // Anchor at the start
+    }
+    const len = txt.length;
+    for (let i=0; i<len; i++) {
+      const ch = txt[i];
+      if (ch == '*') {
+        exp += '.*'; // 0 or more of any character
+        hasAsterisk = true;
+      } else
+      if (ch == '?') {
+        exp += '.';  // Any character
+      } else
+      if (ch == '.') {
+        exp += '[.]'; // Literal
+      } else 
+      if (specials.includes(ch)) {
+        exp += '\\x'+ch.charCodeAt(0).toString(16).padStart(2,'0');
+      } else {
+        exp += ch;
+      }
+    }
+    if ((hasAsterisk && !txt.endsWith('*')) || endAnchor) {
+      exp += '$'; // anchor to the end
+    }
+  }
+
+  const re = new RegExp(exp);
   const max = hbTest.otFont?.glyphs?.length;
   let found = false;
   for (let i=0; i<max; i++) {
     const name = hbTest.getGlyphName(i);
     if (re.test(name)) {
       found = true;
-      func(i);
+      func(i, name);
     }
   }
   return found;
@@ -586,7 +901,7 @@ function processRangeInteger(txt, groupSet, func) {
     throw new Error('Group/Range error "'+v+'"');
     return 0;
   }
-  const hasLetters = new RegExp('[A-Z][a-z]');
+  const hasLetters = new RegExp('[A-Za-z]');
   var sets = txt.split(',');
   for (let set of sets) {
     let range;
@@ -598,7 +913,8 @@ function processRangeInteger(txt, groupSet, func) {
     if (range.length === 1) {
       const v = range[0];
       if (!isNaN(v)) {
-        func(parseInt(v));
+        const gid = parseInt(v);
+        func(gid);
         count++;        
       } else
       if (groupSet && groupSet[v]) {
@@ -913,6 +1229,7 @@ class HarfBuzzForceFieldClass {
     this.clearDefaults();
     this.setFarValues([10,25,50]);
     this.farValueOk = false;
+    this.groups = {};
   }
   clearDefaults() {    
     this.defaults = {};
@@ -995,6 +1312,17 @@ class HarfBuzzForceFieldClass {
     const glyphData = this.otFont?.glyphs?.get(gid);
     if (!glyphData) return undefined;
     return glyphData.name;
+  }
+  getGidFromName(name) {
+    const max = hbTest.otFont?.glyphs?.length;
+    let found = false;
+    for (let i=0; i<max; i++) {
+      const gn = this.getGlyphName(i);
+      if (name == gn) {
+        return i;
+      }
+    }
+    return undefined;
   }
   isMarkClass(gid) {
     return (this.getGlyphClass(gid) === 3);
@@ -1414,7 +1742,7 @@ class HarfBuzzForceFieldClass {
       let group = [];
       for (let i=0; i<size;i++) {
         const gid = v[i];
-        processRangeInteger(gid, null, function(g) {group.push(g);});
+        processRangeInteger(gid, null, function(g, n) {group.push(g);});
       }
       group.src = String(v);
       obj.groups[k] = group;
@@ -1726,7 +2054,7 @@ function updateJSON() {
           const f  = getOldOrNew(data[key].max, data[key].f);
           var cl = data[key].cl;
 
-          processRangeInteger(key, hbTest.groups, function(gid) {
+          processRangeInteger(key, hbTest.groups, function(gid,name) {
             hbTest.setGlyphValues(gid, f, n, nb, cl);
           });
         }
@@ -1765,6 +2093,15 @@ function updateJSON() {
   }
   var res = processWord(inputText.value, true);
   wordRating.innerText = res.rating;
+  disableDebugButtons();
+}
+
+function disableDebugButtons() {
+  // Update buttons...
+  btnDebugGroups.disabled = Object.keys(hbTest?.groups).length == 0;
+  btnDebugGroup.disabled  = btnDebugGroups.disabled;
+  btnDebugOverlaps.disabled = !hbTest.overlaps;
+  btnDebugBar.disabled = !hbTest.bar;  
 }
 
 // Used for colouration of glyphs or clusters
@@ -1804,6 +2141,14 @@ function testFarValue(result, id) {
 }
 
 function processWord(word, display) {
+  const showFar      = cbShowFar.checked;
+  //~~~~//cbShowFarMarks.disabled = !showFar;
+  const showFarMarks = cbShowFarMarks.checked;
+  const showNear     = cbShowNear.checked;
+  const showNearBase = cbShowNearBase.checked;
+  const showGlyphs   = cbShowGlyphs.checked;
+  const showCollisions = cbShowCollisions.checked;
+
   var wordRating = '';
   var buffer = hb.createBuffer();
   if (display) {
@@ -1876,11 +2221,13 @@ function processWord(word, display) {
         if (nearBase) {
           overallNearBase.unionWith(nearBase);
         }
-        hbTest.drawCPaths(gs.path('glyph'), null, {
-            id:id,
-            gid:x.g,
-            fillColor:color, fillOpacity:0.5,
-            strokeColor:colors.glyphMark, strokeOpacity:0.8, strokeWidth:8});
+        if (showGlyphs) {
+          hbTest.drawCPaths(gs.path('glyph'), null, {
+              id:id,
+              gid:x.g,
+              fillColor:color, fillOpacity:0.5,
+              strokeColor:colors.glyphMark, strokeOpacity:0.8, strokeWidth:8});
+        }
       }
     } else {
       if (!hbTest.bar?.far && hbTest.glyphInBars(x.g))
@@ -1895,11 +2242,13 @@ function processWord(word, display) {
           overallNear.unionWith(p);
         else
           overallNear.unionWith(gs.path('near'));
-        hbTest.drawCPaths(gs.path('glyph'), null, {
-            id:id,
-            gid:x.g,
-            fillColor:color, fillOpacity:0.5,
-            strokeColor:colors.glyphBase, strokeOpacity:0.8, strokeWidth:8});
+        if (showGlyphs) {
+          hbTest.drawCPaths(gs.path('glyph'), null, {
+              id:id,
+              gid:x.g,
+              fillColor:color, fillOpacity:0.5,
+              strokeColor:colors.glyphBase, strokeOpacity:0.8, strokeWidth:8});
+        }
       }
     }
     // show GID
@@ -2022,17 +2371,31 @@ function processWord(word, display) {
 
   if (display) perfAdd('collision done');
 
+  if (display) {
+    if (showNear) hbTest.drawCPaths(overallNear, null, {strokeColor:colors.minBase, strokeWidth:8});
+    if (showNearBase) hbTest.drawCPaths(overallNearBase, null, {strokeColor:colors.minMarkBase, strokeWidth:6});
+  }
+
   var islandsBase = overallFar.countIslands();
+  if (display && !showFarMarks) {
+    // Show without the marks combined
+    if (showFar) hbTest.drawCPaths(overallFar, null, {strokeColor:colors.maxBase, strokeWidth:8});    
+  }
   overallFar.unionWith(overallMarks);
+
+  if (display && showFarMarks) {
+    if (showFar)
+      hbTest.drawCPaths(overallFar, null, {strokeColor:colors.maxBase, strokeWidth:8});        
+    else
+      hbTest.drawCPaths(overallMarks, null, {strokeColor:colors.maxBase, strokeWidth:8});        
+  }
   var islandsAll = overallFar.countIslands();
 
   if (display) {
-    hbTest.drawCPaths(overallNear, null, {strokeColor:colors.minBase, strokeWidth:8});
-    hbTest.drawCPaths(overallNearBase, null, {strokeColor:colors.minMarkBase, strokeWidth:6});
-    hbTest.drawCPaths(overallFar, null, {strokeColor:colors.maxBase, strokeWidth:8});
-    hbTest.drawCPaths(collisions, null, {
-      fillColor:colors.collision, fillOpacity:0.8,
-      strokeColor:colors.collision, strokeOpacity:1.0, strokeWidth:20});
+    if (showCollisions)
+      hbTest.drawCPaths(collisions, null, {
+        fillColor:colors.collision, fillOpacity:0.8,
+        strokeColor:colors.collision, strokeOpacity:1.0, strokeWidth:20});
     perfAdd('islands+draw');
   }
 
@@ -2528,13 +2891,18 @@ function listGids(gid) {
   }
   let txt = '';
   let count = 0;
+  const hasLetters = String(gid).search(/[A-Za-z\{\}\$\.]/) >= 0;
   processRangeInteger(gid, hbTest.groups,
-    function (g) {
-      if (txt.length > 0) txt += ', ';
-      txt += `${g}`;
+    function (g,name) {
+      if (hasLetters)
+        txt += `${g} ${name}\r\n`;
+      else {
+        if (txt.length > 0) txt += ', ';
+        txt += `${g}`;
+      }
       count++;
     });
-  console.log(`"${gid}" -> ${txt}`);
+  console.log(`"${gid}" ->\r\n${txt}`);
   return count;
 }
 
@@ -2621,6 +2989,7 @@ window.opentype = opentype;
 window.Layout = Layout;
 window.updateTransfer = updateTransfer;
 window.processRangeInteger = processRangeInteger;
+window.processGlyphName = processGlyphName;
 window.list = {
   gids: listGids,
   overlaps: listOverlaps,
@@ -2632,6 +3001,7 @@ window.list = {
 </script>
 
 </br>
-</br>2025-11-20 m
+</br>2025-11-24 j
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
+</body>
 </html>
