@@ -187,7 +187,7 @@ dialog {
 <table width='100%' id='jsonTable'>
   <tr><td width='25%'>JSON:</td>
     <td>
-      <textarea style="width:90%" id="jsonText" cols='40' rows='8' wrap='off' oninput="updateJSON();">
+      <textarea style="width:90%" id="jsonText" cols='40' rows='8' wrap='off' oninput="updateJSON();" spellcheck="false">
 //** Drag and Drop .json or .txt **//
 
 // e.g.
@@ -246,7 +246,7 @@ dialog {
         <button onclick="debugGIDs();" id="btnDebugGIDs" title="Show the glyph IDs for the input text (group, wildcard, regexp)">GIDs</button> 
         <button onclick="debugOverlaps();" id="btnDebugOverlaps" title="Show all overlap sets for the GID in the input field">Overlaps</button>
         <button onclick="debugBar();" id="btnDebugBar" title="Show all the GIDs in the bar set">Bar</button><br/>
-        <textarea id="debugOutput" style="width:100%;" cols='60' rows='32' wrap='off' style='font-family:monospace;'></textarea>
+        <textarea id="debugOutput" style="width:100%;" cols='60' rows='32' wrap='off' style='font-family:monospace;' spellcheck="false"></textarea>
         <br/><button onclick="debugCopy();">Copy to Clipboard</button>
       <!--</form>-->
     </dialog>
@@ -696,16 +696,16 @@ function debugOutputDblClick(e) {
   let ss = debugOutput.selectionStart;
   let se = debugOutput.selectionEnd;
   const max = txt.length;
-  const isSpace = ' \t';
+  const isDelim = ' \t,\'"';
   const isCrLf  = '\r\n';
   while (se > ss) {
     const ch = txt.charAt(se-1);
-    if (!isSpace.includes(ch) && !isCrLf.includes(ch)) break;
+    if (!isDelim.includes(ch) && !isCrLf.includes(ch)) break;
     se--;
   }
   while (ss > 0) {
     const ch = txt.charAt(ss);
-    if (isSpace.includes(ch)) {
+    if (isDelim.includes(ch)) {
       ss++;
       break;
     }
@@ -717,7 +717,7 @@ function debugOutputDblClick(e) {
   }
   while (se < max) {
     const ch = txt.charAt(se);
-    if (isSpace.includes(ch)) {
+    if (isDelim.includes(ch)) {
       break;
     }
     if (isCrLf.includes(ch)) {
@@ -3002,7 +3002,7 @@ window.list = {
 </script>
 
 </br>
-</br>2025-11-24 l
+</br>2025-11-24 m
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
