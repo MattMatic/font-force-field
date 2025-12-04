@@ -1,6 +1,6 @@
 <html>
 <head>
-  <title>Font Force Field Test</title>
+  <title>Font Force Field Tool</title>
   <style>
 body {
   font-family: "Calibri";
@@ -268,7 +268,8 @@ dialog {
     <button onclick='pickWord(-1);' accesskey='2'>Prev (Alt-2)</button>
     <button onclick='pickWord(1);'  accesskey='3'>Next (Alt-3)</button>
     <button onclick='pickWord(9);'  accesskey='4'>Last (Alt-4)</button>
-    </br><span id='wordIndex'></span>
+    </br>
+      <input type="text" id='wordIndex' hidden></input><button id='wordIndexGo'>Go</button>
   </td></tr>
   <tr><td>Sync:</td><td>
     <button onclick='openFontCompareWordListTool();' id='btnFCWL'>Font Compare Word List</button>
@@ -290,6 +291,7 @@ viewBox="-250 -1800 1500 1000" preserveAspectRatio="none"
   <button id="zoomOutSVG" onclick="zoomSVG(-1);">-</button>
   <button id="zoomResetSVG" onclick="zoomSVG(0);" title="Middle click or Shift-Left and drag to pan the SVG">100%</button>
   <button id="zoomInSVG" onclick="zoomSVG(1);">+</button>
+  <font size=-1>&nbsp; Shift-Scroll to zoom. Left-Mouse to drag.</span>
 
 <script>
 "use strict";
@@ -352,21 +354,24 @@ function zoomSVG(amount) {
 function addSVGZoomAndPan(svg){
   // From https://github.com/Holger-Will/SVGZoomAndPan/blob/master/zap.js
   svg.addEventListener("wheel",function(evt){
-    var newScale
-    if(evt.deltaY>0){newScale=svg.currentScale/1.1}
-    if(evt.deltaY<0){newScale=svg.currentScale*1.1}
-    var oldScale=svg.currentScale
-     svg.currentTranslate.x=(-evt.offsetX+svg.currentTranslate.x)*(newScale/oldScale)
-     svg.currentTranslate.y=(-evt.offsetY+svg.currentTranslate.y)*(newScale/oldScale)
-     svg.currentScale=newScale
-     svg.currentTranslate.x+=evt.offsetX
-     svg.currentTranslate.y+=evt.offsetY
-     var event = new Event('SVGZoom');
-     svg.dispatchEvent(event);
-     evt.preventDefault();  // Stop window from scrolling (update to zap.js)
+    if (evt.shiftKey) {
+      // Only zoom while the shift key is pressed (to allow scrolling the page)
+      var newScale
+      if(evt.deltaY>0){newScale=svg.currentScale/1.1}
+      if(evt.deltaY<0){newScale=svg.currentScale*1.1}
+      var oldScale=svg.currentScale
+       svg.currentTranslate.x=(-evt.offsetX+svg.currentTranslate.x)*(newScale/oldScale)
+       svg.currentTranslate.y=(-evt.offsetY+svg.currentTranslate.y)*(newScale/oldScale)
+       svg.currentScale=newScale
+       svg.currentTranslate.x+=evt.offsetX
+       svg.currentTranslate.y+=evt.offsetY
+       var event = new Event('SVGZoom');
+       svg.dispatchEvent(event);
+       evt.preventDefault();  // Stop window from scrolling (update to zap.js)
+     }
   } /*, {passive:true}*/)
   svg.addEventListener("mousedown",function(evt){
-    if(evt.shiftKey || evt.button==1){
+    if(!evt.shiftKey || evt.button==1){
       svg.classList.add("dragging")
       var ox=evt.offsetX
       var oy=evt.offsetY
@@ -1911,11 +1916,11 @@ function unifyAttachmentsOrder(attachments, bufferResults) {
 }
 
 
-const colors = {
+let svgColors = {
   glyphBase:    '#000',
   glyphMark:    '#404',
   minBase:      '#4d4',
-  minMarkBase:  '#7e7',
+  minMarkBase:  '#f8c', //'#7e7',
   maxBase:      '#8af', //'#08e',
   collision:    '#f44',
 
@@ -2220,7 +2225,7 @@ function processWord(word, display) {
       overallMarks.unionWith(gs.path('far'));
       if (display) {
         var color = colorText;
-        if (solidColour) color = colors.glyphMark;
+        if (solidColour) color = svgColors.glyphMark;
         overallNear.unionWith(gs.path('near'));
         const nearBase = gs.path('nearBase');
         if (nearBase) {
@@ -2231,7 +2236,7 @@ function processWord(word, display) {
               id:id,
               gid:x.g,
               fillColor:color, fillOpacity:0.5,
-              strokeColor:colors.glyphMark, strokeOpacity:0.8, strokeWidth:8});
+              strokeColor:svgColors.glyphMark, strokeOpacity:0.8, strokeWidth:8});
         }
       }
     } else {
@@ -2241,7 +2246,7 @@ function processWord(word, display) {
         overallFar.unionWith(gs.path('far'));
       if (display) {
         var color = colorText;
-        if (solidColour) color = colors.glyphBase;
+        if (solidColour) color = svgColors.glyphBase;
         let p = gs.path('nearBar');
         if (p)
           overallNear.unionWith(p);
@@ -2252,7 +2257,7 @@ function processWord(word, display) {
               id:id,
               gid:x.g,
               fillColor:color, fillOpacity:0.5,
-              strokeColor:colors.glyphBase, strokeOpacity:0.8, strokeWidth:8});
+              strokeColor:svgColors.glyphBase, strokeOpacity:0.8, strokeWidth:8});
         }
       }
     }
@@ -2377,30 +2382,30 @@ function processWord(word, display) {
   if (display) perfAdd('collision done');
 
   if (display) {
-    if (showNear) hbTest.drawCPaths(overallNear, null, {strokeColor:colors.minBase, strokeWidth:8});
-    if (showNearBase) hbTest.drawCPaths(overallNearBase, null, {strokeColor:colors.minMarkBase, strokeWidth:6});
+    if (showNear) hbTest.drawCPaths(overallNear, null, {strokeColor:svgColors.minBase, strokeWidth:8});
+    if (showNearBase) hbTest.drawCPaths(overallNearBase, null, {strokeColor:svgColors.minMarkBase, strokeWidth:6});
   }
 
   var islandsBase = overallFar.countIslands();
   if (display && !showFarMarks) {
     // Show without the marks combined
-    if (showFar) hbTest.drawCPaths(overallFar, null, {strokeColor:colors.maxBase, strokeWidth:8});    
+    if (showFar) hbTest.drawCPaths(overallFar, null, {strokeColor:svgColors.maxBase, strokeWidth:8});    
   }
   overallFar.unionWith(overallMarks);
 
   if (display && showFarMarks) {
     if (showFar)
-      hbTest.drawCPaths(overallFar, null, {strokeColor:colors.maxBase, strokeWidth:8});        
+      hbTest.drawCPaths(overallFar, null, {strokeColor:svgColors.maxBase, strokeWidth:8});        
     else
-      hbTest.drawCPaths(overallMarks, null, {strokeColor:colors.maxBase, strokeWidth:8});        
+      hbTest.drawCPaths(overallMarks, null, {strokeColor:svgColors.maxBase, strokeWidth:8});        
   }
   var islandsAll = overallFar.countIslands();
 
   if (display) {
     if (showCollisions)
       hbTest.drawCPaths(collisions, null, {
-        fillColor:colors.collision, fillOpacity:0.8,
-        strokeColor:colors.collision, strokeOpacity:1.0, strokeWidth:20});
+        fillColor:svgColors.collision, fillOpacity:0.8,
+        strokeColor:svgColors.collision, strokeOpacity:1.0, strokeWidth:20});
     perfAdd('islands+draw');
   }
 
@@ -2634,6 +2639,7 @@ function handleWordsDrop(file) {
     wordList = buildListFromFileContents(txt);
     wordListDetails.innerText = wordList.length + ' ' + window.wordlistFilename;
     btnRateWordList.hidden = false;
+    wordIndex.hidden = false;
   }
   reader.readAsText(file);
 }
@@ -2809,14 +2815,16 @@ function loadPickWord(i) {
   const size = wordList.length;
   if (size === 0) {
     inputText.value = 'abc';
-    wordIndex.innerText = '';
+    wordIndex.value = '';
+    wordIndex.hidden = true;
     return;
   }
   const we = wordList[i];
   if (i < 0) i = 0;
   if (i >= size) i = size - 1;
   inputText.value = we.getWord();
-  wordIndex.innerText = '#'+(i+1);
+  wordIndex.value = (i+1);
+  wordIndex.hidden = false;
   pickWordIndex = i;
   updateValues();
 }
@@ -2847,6 +2855,13 @@ function pickWord(which) {
   else if (which === 9) i = size - 1;
   loadPickWord(i);
 }
+
+function wordIndexChange(event) {
+  const i = parseInt(wordIndex.value) || 0;
+  loadPickWord(i-1);
+}
+
+wordIndexGo.addEventListener('click', wordIndexChange);
 
 function DateTimeForFilename() {
   //  012345678901234567890123
@@ -3002,11 +3017,12 @@ window.list = {
   groups: listGroups,
   bar: listBar,
 }
+window.svgColors = svgColors;
 
 </script>
 
 </br>
-</br>2025-11-24 n
+</br>2025-12-04 o
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
