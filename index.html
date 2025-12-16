@@ -228,6 +228,7 @@ dialog {
     <input type="checkbox" id="cbShowNearBase" checked><label for="cbShowNearBase">Near Base</label>
     <input type="checkbox" id="cbShowFar" checked><label for="cbShowFar">Far</label>
     <input type="checkbox" id="cbShowFarMarks" checked><label for="cbShowFarMarks">Far Marks</label>
+    <input type="checkbox" id="cbShowFarExtra"><label for="cbShowFarExtra">Far Extra</label>    
     <input type="checkbox" id="cbShowCollisions" checked><label for="cbShowCollisions">Collisions</label>
   </td></tr>
   <tr><td>Options:</td><td>
@@ -258,7 +259,16 @@ dialog {
 </td>
 <td width='50%' valign='top'>
   <table border=0 width='100%' id='WordsDragDrop'>
-  <tr><td width='25%'>Word List:</td><td><div id='wordListDetails'>(drag .txt. file here)</div> <button hidden onclick='rateWordList();' id='btnRateWordList'>Rate!</button> <button onclick='saveResults();' hidden id='saveListButton'>Save List</button></td></tr>
+  <tr><td width='25%'>Word List:</td>
+    <td>
+      <div id='wordListDetails'>(drag .txt. file here)</div>
+      <button hidden onclick='rateWordList();' id='btnRateWordList'>Rate!</button>
+      <button onclick='saveResults();' hidden id='saveListButton'>Save List</button>
+      <div id='divFarExtraMark' hidden>
+        <br/><input type='checkbox' id='cbFarExtraMark' title='Include mark path in the extra far base (takes longer!)'>Include Mark in Extra Far</input>
+      </div>
+    </td>
+  </tr>
   <tr><td>Progress:</td><td><div id='statusUpdate'>-</div> <button onclick='AbortProgress();' id='AbortButton' hidden>Abort!</button></td></tr>
   <tr><td>Stats:</td><td><div id='statusCounts'>-</div></td></tr>
   <tr><td>Word:</td><td>
@@ -425,10 +435,12 @@ function UpdateListener(id, event, foo) {
 
 UpdateListener('cbShowFar', 'input');
 UpdateListener('cbShowFarMarks', 'input');
+UpdateListener('cbShowFarExtra', 'input');
 UpdateListener('cbShowNear', 'input');
 UpdateListener('cbShowNearBase', 'input');
 UpdateListener('cbShowGlyphs', 'input');
 UpdateListener('cbShowCollisions', 'input');
+UpdateListener('cbFarExtraMark', 'input');
 
 UpdateListener('cbShowGids', 'input');
 UpdateListener('cbShowGidNames', 'input');
@@ -444,6 +456,7 @@ UpdateListener('debugOutput', 'dblclick', debugOutputDblClick);
 var hbfcwl = null;
 var api = {};
 var fontFileName = '';
+var checkMarkPath = undefined;
 
 function openFontCompareWordListTool() {
   api = {};
@@ -739,8 +752,6 @@ function debugOutputDblClick(e) {
   debugInput.value = txt.slice(ss, se);
   debugInputChange();
 }
-
-let debugSkipFarQuantifier = false;
 
 </script>
 <script type='module'>
@@ -1044,6 +1055,12 @@ class CPaths64 {
     result.bbox.y.max = this.bbox.y.max + oyi;
     return result;
   }
+  duplicatePath() {
+    const { TranslatePaths64 } = Clipper2Z;
+    let result = new CPaths64();
+    result.setPaths64(TranslatePaths64(this.paths64, 0, 0), true);
+    return result;
+  }
   // Inflate this path by `idelta` and return a new CPaths64 object.
   // settings.jointype = JoinType.Miter
   // settings.mitreLimit = 25
@@ -1187,6 +1204,9 @@ class GlyphSet {
     return p;
   }
   path(id) {
+    if (id == 'glyph') {
+      return this.paths.glyph;
+    }
     let p = this.paths[id];
     return p;
   }
@@ -1518,7 +1538,7 @@ class HarfBuzzForceFieldClass {
       
       for (let i=0;i<this.farValues.length;i++) {
         const p = this.farValues[i];
-        gs.addInflated(`far${i}`, farInflate * (1 + p/100.0)); // 110% to 190%
+        gs.addInflated(`far${p}`, farInflate * (1 + p/100.0)); // 110% to 190%
       }
       
       if ((typeof(gb.nearBase) !== 'undefined') && (gb.nearBase !== null)) {
@@ -1922,6 +1942,8 @@ let svgColors = {
   minBase:      '#4d4',
   minMarkBase:  '#f8c', //'#7e7',
   maxBase:      '#8af', //'#08e',
+  maxExtra:     '#acf',
+  maxExtraMark: 'yellow',
   collision:    '#f44',
 
   maxMark:      '#000', //'#e0f',
@@ -2056,6 +2078,9 @@ function updateJSON() {
         const values = data[key].values;
         if (values) hbTest.setFarValues(values);
         hbTest.farValueOk = data[key].ok;
+        divFarExtraMark.hidden =  (!data[key].markPath);
+        if (divFarExtraMark.hidden) cbFarExtraMark.checked = false;
+        checkMarkPath = data[key].markPath;
       }
       else {
         if (typeof key === 'string') {
@@ -2119,7 +2144,7 @@ const glyphColors = ['#bb87e3','#bc6b0e','#57118c','#64902e','#91bbec','#d65e02'
 
 // Use specified `id` of glyph expanded outline, and return how many islands of base + all
 // Called within processWord, after result has had polygons moved and applied
-function testFarValue(result, id) {
+function testFarValue(result, id, options) {
   let overallFar   = new CPaths64();
   let overallMarks = new CPaths64();
   result.forEach(function(x) {
@@ -2135,6 +2160,43 @@ function testFarValue(result, id) {
     }
   });
   let islandsBase = overallFar.countIslands();
+  let islandsBaseMarks = islandsBase;
+  if ((islandsBase > 1) && (options?.checkMarkPath)) {
+    // Take the overall base path and union with each mark glyph in turn
+    // Goal: looking for a mark that joins islands
+    const pathName = options?.checkMarkPath;
+    let ofar = overallFar.duplicatePath();
+    for (let idx=0; idx<result.length; idx++) {
+      const x = result[idx];
+      const gs = x.gs;
+      if (hbTest.isMarkClass(x.g)) {
+        let o = ofar.duplicatePath();
+        const p = gs.path(pathName);
+        const pi = p.countIslands();
+        if (pi > 1) {
+          // Difficult to detect overlap
+        }
+        o.unionWith(p);
+        let oi = o.countIslands();
+        if (oi < islandsBaseMarks) {
+          // Now we also know which mark is in between...
+          islandsBaseMarks = oi;
+          x.glue = true;
+          ofar.freePath();
+          ofar = o;
+        } else {
+          o.freePath();
+        }
+        if (islandsBaseMarks <= 1) {
+          // No need to go further
+          break;
+        }
+      }
+    }
+    ofar.freePath();
+  }
+
+  // Now join the marks overall
   overallFar.unionWith(overallMarks);
   let islandsAll = overallFar.countIslands();
 
@@ -2144,20 +2206,23 @@ function testFarValue(result, id) {
   return {
     base: islandsBase,
     all : islandsAll,
+    basemarks: islandsBaseMarks,
     fb  : (islandsBase > 1),
     fm  : (islandsAll > islandsBase),
     ok  : (islandsAll == 1),
+    fbm : (islandsBaseMarks > 1),
   }
 }
 
 function processWord(word, display) {
-  const showFar      = cbShowFar.checked;
+  const showFar      = display && cbShowFar.checked;
   //~~~~//cbShowFarMarks.disabled = !showFar;
-  const showFarMarks = cbShowFarMarks.checked;
-  const showNear     = cbShowNear.checked;
-  const showNearBase = cbShowNearBase.checked;
-  const showGlyphs   = cbShowGlyphs.checked;
-  const showCollisions = cbShowCollisions.checked;
+  const showFarMarks = display && cbShowFarMarks.checked;
+  const showFarExtra = display && cbShowFarExtra.checked;
+  const showNear     = display && cbShowNear.checked;
+  const showNearBase = display && cbShowNearBase.checked;
+  const showGlyphs   = display && cbShowGlyphs.checked;
+  const showCollisions = display && cbShowCollisions.checked;
 
   var wordRating = '';
   var buffer = hb.createBuffer();
@@ -2195,6 +2260,7 @@ function processWord(word, display) {
   if (display) perfAdd('first pass');
 
   var overallFar = new CPaths64();
+  var overallFarExtra = {}; // of new CPaths64();
   var overallMarks = new CPaths64();
   var overallNear = new CPaths64();
   var overallNearBase = new CPaths64();
@@ -2258,6 +2324,18 @@ function processWord(word, display) {
               gid:x.g,
               fillColor:color, fillOpacity:0.5,
               strokeColor:svgColors.glyphBase, strokeOpacity:0.8, strokeWidth:8});
+        }
+        if (showFarExtra && !hbTest.glyphInBars(x.g)) {
+          // Produce combined stack of extra far fields
+          const fxmax = hbTest.farValues.length;
+          for (let i=0; i<fxmax; i++) {
+            const pc = hbTest.farValues[i];
+            const p64 = gs.path(`far${pc}`);
+            if (!overallFarExtra[i]) {
+              overallFarExtra[i] = new CPaths64();
+            }
+            overallFarExtra[i].unionWith(p64);
+          }
         }
       }
     }
@@ -2387,6 +2465,11 @@ function processWord(word, display) {
   }
 
   var islandsBase = overallFar.countIslands();
+  if (display && showFarExtra) {
+    for (let [k,v] of Object.entries(overallFarExtra)) {
+      hbTest.drawCPaths(v, null, {strokeColor:svgColors.maxExtra, strokeWidth:4});
+    }
+  }
   if (display && !showFarMarks) {
     // Show without the marks combined
     if (showFar) hbTest.drawCPaths(overallFar, null, {strokeColor:svgColors.maxBase, strokeWidth:8});    
@@ -2446,37 +2529,60 @@ function processWord(word, display) {
     const fm = islandsAll > islandsBase;
     const ok = islandsAll == 1;
 
-    let fbn = 0;
-    let fmn = 0;
-    let okn = hbTest.farValues[hbTest.farValues.length-1];
-    if (ok) okn = 0;
+    let markIsGlue = false;
+    let farBasePercent = 0;
+    let farBaseMarkPercent = undefined; // far base with mark path
+    let farMarkPercent = 0;
+    let okPercent = undefined;
+    if (ok) okPercent = 0;
     const skipOk = !hbTest.farValueOk;
-    if (!debugSkipFarQuantifier) {
-      for (let i=0;i<hbTest.farValues.length;i++) {
-        const p = hbTest.farValues[i];
-        const test = testFarValue(result, `far${i}`);
-        if (test.fb && (p > fbn)) fbn = p;
-        if (test.fm && (p > fmn)) fmn = p;
-        if (test.ok && (p < okn)) okn = p;
-        if ((test.fb || !fb) && (test.fm || !fm) && (ok || skipOk)) {
-          break;    // No point continuing
-        }
+    const cmp = (cbFarExtraMark.checked) ? checkMarkPath : undefined;
+
+    for (let i=0; i<hbTest.farValues.length; i++) {
+      const p = hbTest.farValues[i];
+      const test = testFarValue(result, `far${p}`, {checkMarkPath: cmp});
+      if (test.fb && (p > farBasePercent)) farBasePercent = p;
+      if (test.fm && (p > farMarkPercent)) farMarkPercent = p;
+      if (test.ok && (isNaN(okPercent) || (p < okPercent))) okPercent = p;
+      if (!test.fbm) {
+        if (isNaN(farBaseMarkPercent) || (p < farBaseMarkPercent))
+          farBaseMarkPercent = p;
       }
+      if (!cmp && (test.fb || !fb) && (test.fm || !fm) && (ok || skipOk)) {
+        break;    // No point continuing
+      }        
     }
 
+    result.forEach((x) => {
+      const gs = x.gs;
+        if (x.glue) {
+          markIsGlue = true;
+          if (showFarExtra) {
+            // Marked as a glue by the extra far field calc
+            hbTest.drawCPaths(gs.path(checkMarkPath), null, {
+              fillColor: svgColors.maxExtraMark,
+              fillOpacity:0.7,
+            });
+          }
+        }
+      });
+
     if (fb) {
-      if (!skipOk) wordRating += `ok${okn},`;
+      if (!skipOk) wordRating += `ok${okPercent},`;
       if (ok) {
         if (skipOk) wordRating += 'ok,';
         txt += 'Ok? ';
         collisionCounts.okMaybe = 1;
       }
-      wordRating += `fb${fbn},`;
+      wordRating += `fb${farBasePercent},`;
+      if (markIsGlue) {
+        wordRating += `mg${farBaseMarkPercent},`; // Mark is gluing together
+      }
       txt += 'Base ';
       collisionCounts.farBase = 1;
     }
     if (fm) {
-      wordRating += `fm${fmn},`;
+      wordRating += `fm${farMarkPercent},`;
       txt += 'Marks';
       collisionCounts.farMark = 1;
     }
@@ -2486,6 +2592,9 @@ function processWord(word, display) {
 
   // Free up memory...
   overallFar.freePath();
+  for (let [k, v] of Object.entries(overallFarExtra)) {
+    v.freePath();
+  }  
   overallMarks.freePath();
   overallNear.freePath();
   overallNearBase.freePath();
@@ -2998,6 +3107,10 @@ function listBar() {
   return count;
 }
 
+function setCheckPath(pathName) {
+  checkMarkPath = pathName;
+}
+
 window.updateValues = updateValues;
 window.updateJSON = updateJSON;
 window.rateWordList = rateWordList;
@@ -3017,12 +3130,13 @@ window.list = {
   groups: listGroups,
   bar: listBar,
 }
+window.setCheckPath = setCheckPath;
 window.svgColors = svgColors;
 
 </script>
 
 </br>
-</br>2025-12-04 o
+</br>2025-12-16 n
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>

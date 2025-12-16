@@ -42,6 +42,8 @@ The rating output that is used in the list:
 - `ok` Far Force Field might be ok
   - Where there is a gap in the Far Fields for the base, but the Far Fields of the marks join it all together
 - `fb` Far force field shows a gap for the base glyphs
+- `fb##` Extra far force field shows a gap. e.g. `fb50` = 150%
+- `mg##` Extra far force field with marks glued in shows a gap. e.g. `mg25` = 125%
 - `fm` Far force field shows a gap for the mark glyphs
 
 HINT: if the output text _starts with_ `ok` then there are no collisions, and the word _might_ be ok if there is no `fm` in the output.
@@ -78,6 +80,7 @@ Suggestions:
   // The more values, the longer the rating process takes!
   far:{
     values:[10,25,50],  // (default) => 110%, 125%, 150%
+    nearPath: 'near',   // (default is undefined). Choose the field for marks-glued to far field (e.g. 'near', 'glyph', 'far')
     ok: true,           // (default is false). True will scan for ok percentage (takes even longer)
   },
 
