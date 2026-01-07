@@ -262,8 +262,12 @@ dialog {
   <tr><td width='25%'>Word List:</td>
     <td>
       <div id='wordListDetails'>(drag .txt. file here)</div>
+      <input type='checkbox' id='cbIncludeGlyphs' title='When checked, include Glyph collision data in notes'><label for='cbIncludeGlyphs'>Glyph Collisions</label></input>
       <button hidden onclick='rateWordList();' id='btnRateWordList'>Rate!</button>
+      <br/>
       <button onclick='saveResults();' hidden id='saveListButton'>Save List</button>
+      <br/>
+      <button onclick='saveCollisionMatrix();' hidden id='btnSaveCollisionMatrix'>Save Collision Matrix</button>
       <div id='divFarExtraMark' hidden>
         <br/><input type='checkbox' id='cbFarExtraMark' title='Include mark path in the extra far base (takes longer!)'>Include Mark in Extra Far</input>
       </div>
@@ -448,6 +452,7 @@ UpdateListener('colourGlyph', 'input');
 UpdateListener('colourSolid', 'input');
 UpdateListener('showSliders', 'input', rangeChange);
 UpdateListener('showJSON', 'input', rangeChange);
+UpdateListener('cbIncludeGlyphs', 'input');
 
 UpdateListener('debugInput', 'input', debugInputChange);
 UpdateListener('debugOutput', 'dblclick', debugOutputDblClick);
@@ -2214,6 +2219,28 @@ function testFarValue(result, id, options) {
   }
 }
 
+let collisionPairs = {};
+
+// Convert set to array
+// `g1 g2 g3 g4`
+// Where `g#` is either the glyph name or GID
+function glyphSetToText(s) {
+  if (!cbIncludeGlyphs.checked) return ''; // Nasty interaction with DOM
+  let sa = Array.from(s);
+  sa.sort( (a,b) => {
+    return parseInt(a,10) - parseInt(b,10);
+  });
+  let txt = '';
+  sa.forEach( (gid) => {
+    const name = hbTest.getGlyphName(gid);
+    if (name)
+      txt += `${name} `;
+    else
+      txt += `${gid} `;
+  });
+  return '['+txt.slice(0, -1)+']';
+}
+
 function processWord(word, display) {
   const showFar      = display && cbShowFar.checked;
   //~~~~//cbShowFarMarks.disabled = !showFar;
@@ -2266,6 +2293,29 @@ function processWord(word, display) {
   var overallNearBase = new CPaths64();
   var collisions = new CPaths64();
   var collisionCounts = {};
+  let colPairs = {};
+  let colSet = {};
+
+  const addColPair = function(id, g1, g2) {
+    /*
+    if (!colPairs[id]) colPairs[id] = [];
+    if (!colPairs[id][g1]) colPairs[id][g1] = [];
+    colPairs[id][g1][g2] = (colPairs[id][g1][g2] || 0) + 1;
+    if (!colPairs[id][g2]) colPairs[id][g2] = [];
+    colPairs[id][g2][g1] = (colPairs[id][g2][g1] || 0) + 1;
+    */
+    if (!colSet[id]) colSet[id] = new Set();
+    colSet[id].add(g1);
+    colSet[id].add(g2);
+
+    // And globally
+    if (!collisionPairs[id]) collisionPairs[id] = [];
+    if (!collisionPairs[id][g1]) collisionPairs[id][g1] = [];
+    collisionPairs[id][g1][g2] = (collisionPairs[id][g1][g2] || 0) + 1;
+    if (!collisionPairs[id][g2]) collisionPairs[id][g2] = [];
+    collisionPairs[id][g2][g1] = (collisionPairs[id][g2][g1] || 0) + 1;
+
+  }
 
   pos.x = 0;
   pos.y = 0;
@@ -2275,6 +2325,8 @@ function processWord(word, display) {
   const showGids = cbShowGids.checked;
   const showGidNames = cbShowGidNames.checked;
 
+  const glyphSequence = [];
+
   result.forEach(function(x) {
     colourIndex++;
     var colorText = glyphColors[colourIndex%glyphColors.length];
@@ -2282,6 +2334,9 @@ function processWord(word, display) {
     const py = pos.y + x.dy;
 
     const gs = x.gs;
+    glyphSequence.push({
+      gid: x.g,
+    });
 
     var id = `n${n}_g${x.g}_c${x.cl}`;
     var ismark = false;
@@ -2432,15 +2487,31 @@ function processWord(word, display) {
           //if (display)
           collisions.unionWith(collision);
           if (hbTest.isMarkClass(x1.g) /*fontdata.marks[x1.g]*/) {
-            if (hbTest.isMarkClass(x2.g) /*fontdata.marks[x2.g]*/)
+            if (hbTest.isMarkClass(x2.g) /*fontdata.marks[x2.g]*/) {
               collisionCounts.colMarkToMark = (collisionCounts.colMarkToMark || 0) + 1;
-            else
+              addColPair('colMarkToMark', x1.g, x2.g);
+              glyphSequence[i1].colMarkToMark = true;
+              glyphSequence[i2].colMarkToMark = true;
+            }
+            else {
               collisionCounts.colMarkToBase = (collisionCounts.colMarkToBase || 0) + 1;
+              addColPair('colMarkToBase', x1.g, x2.g);
+              glyphSequence[i1].colMarkToBase = true;
+              glyphSequence[i2].colMarkToBase = true;
+            }
           } else {
-            if (hbTest.isMarkClass(x2.g) /*fontdata.marks[x2.g]*/)
+            if (hbTest.isMarkClass(x2.g) /*fontdata.marks[x2.g]*/) {
               collisionCounts.colMarkToBase = (collisionCounts.colMarkToBase || 0) + 1;
-            else
+              addColPair('colMarkToBase', x1.g, x2.g);
+              glyphSequence[i1].colMarkToBase = true;
+              glyphSequence[i2].colMarkToBase = true;
+            }
+            else {
               collisionCounts.colBaseToBase = (collisionCounts.colBaseToBase || 0) + 1;
+              addColPair('colBaseToBase', x1.g, x2.g);
+              glyphSequence[i1].colBaseToBase = true;
+              glyphSequence[i2].colBaseToBase = true;
+            }
           }
           collision.freePath();
 
@@ -2448,6 +2519,9 @@ function processWord(word, display) {
           collision = x1.gs.path('glyph').collisionCPath(x2.gs.path('glyph'));
           if (collision) {
             collisionCounts.colGlyph = (collisionCounts.colGlyph || 0)+1;
+            addColPair('colGlyph', x1.g, x2.g);
+            glyphSequence[i1].colGlyph = true;
+            glyphSequence[i2].colGlyph = true;
             collision.freePath();
           }
         }
@@ -2497,19 +2571,19 @@ function processWord(word, display) {
   var txt = '';
   {
     if (collisionCounts.colGlyph > 0) {
-      wordRating += 'GG'+collisionCounts.colGlyph+',';
-      txt += 'GG'+collisionCounts.colGlyph+' ';
+      wordRating +=`GG${collisionCounts.colGlyph}${glyphSetToText(colSet.colGlyph)},`;
+      txt += `GG${collisionCounts.colGlyph} `;
     }
     if (collisionCounts.colBaseToBase > 0) {
-      wordRating += 'cb'+collisionCounts.colBaseToBase+',';
+      wordRating += `cb${collisionCounts.colBaseToBase}${glyphSetToText(colSet.colBaseToBase)},`;
       txt += 'BB:'+collisionCounts.colBaseToBase+' ';
     }
     if (collisionCounts.colMarkToBase > 0) {
-      wordRating += 'cx'+collisionCounts.colMarkToBase+ ',';
+      wordRating += `cx${collisionCounts.colMarkToBase}${glyphSetToText(colSet.colMarkToBase)},`;
       txt += 'MB:'+collisionCounts.colMarkToBase+' ';
     }
     if (collisionCounts.colMarkToMark > 0) {
-      wordRating += 'cm'+collisionCounts.colMarkToMark+',';
+      wordRating += `cm${collisionCounts.colMarkToMark}${glyphSetToText(colSet.colMarkToMark)},`;
       txt += 'MM:'+collisionCounts.colMarkToMark;
     }
     const { AreaPaths64 } = Clipper2Z;
@@ -2612,6 +2686,8 @@ function processWord(word, display) {
   return {
     rating: wordRating,
     counts: collisionCounts,
+    glyphs: glyphSequence,
+    collisions: colSet,
   };
 }
 
@@ -2692,9 +2768,11 @@ class wordEntryClass {
     if (r) txt += `\t${r[1] || '0'}`; else txt += '\t';
 
     // Finish the line
+    /*
     while (txt.endsWith('\t')) {
       txt = txt.slice(0, txt.length-1);
     }
+    */
     return txt;
   }
 }
@@ -2887,10 +2965,13 @@ async function rateWordList() {
   btnFCWL.disabled = true;
   btnRateWordList.disabled = true;
 
+  collisionPairs = {};
   AbortReset();
   for (let i=0; i<total; i++) {
     var word = wordList[i].getWord();
     var res = processWord(word);
+    wordList[i].glyphs = res.glyphs;
+    wordList[i].collisions = res.collisions;
     wordList[i].setNote(res.rating);
     if (res.rating != '') {
       wordList[i].setChecked(true);
@@ -2912,10 +2993,12 @@ async function rateWordList() {
   AbortButton.hidden = true;
   updateStatusMessage(-1, total, checkcount, countsOverall);
   saveListButton.hidden = false;
+  btnSaveCollisionMatrix.hidden = false;
   setDisableAllDivElements('slidersDiv', false);
   setDisableAllDivElements('jsonDiv', false);
   btnFCWL.disabled = false;
   btnRateWordList.disabled = false;
+  //~~//console.log('collisionPairs', collisionPairs); //~~
 }
 
 let pickWordIndex = 0;
@@ -2980,10 +3063,17 @@ function DateTimeForFilename() {
          d.slice(11,13)+d.slice(14,16)+d.slice(17,19);
 }
 
-function saveResults() {
-  var txt = '';
-  var i = 0;
+function saveTextToFile(txt, filename) {
+  let bb = new Blob([txt], {type: 'text/plain;charset=utf-8'});
+  let a = document.createElement('a');
+  a.download = filename;
+  a.href = window.URL.createObjectURL(bb);
+  a.target='_blank';
+  a.click();
+}
 
+function generateCommentHeader() {
+  let txt = ''
   txt += '\t########################################\r\n';
   txt += '\t#           Font: \t'+hbTest.fileDescription+'\r\n';
   txt += '\t#           JSON: \t'+jsonFilename+' ('+jsonLastModifiedDate+')\r\n';
@@ -2995,22 +3085,145 @@ function saveResults() {
   txt += '\t########################################\r\n';
   txt += '\t#          Stats:  \t'+statusCounts.innerText.replace(/[\r\n]+/g, '; ')+'\r\n';
   txt += '\t########################################\r\n';
-  txt += '\t#Word\tNote\tGlyphGlyph(GG)\tBaseBase(cb)\tMarkBase(cx)\tArea(ca)\tOK(ok)\tFarBase(fb)\tFarMark(fm)\r\n';
+  return txt;
+}
+
+function saveResults() {
+  var txt = '';
+  var i = 0;
+
+  txt = generateCommentHeader();
+  txt += `\t#Word\tNote\tGlyphGlyph(GG)\tBaseBase(cb)\tMarkBase(cx)\tArea(ca)\tOK(ok)\tFarBase(fb)\tFarMark(fm)\tGlyphs (GG=${icons.GG},cb=${icons.cb},cx=${icons.cx},cm=${icons.cm})\r\n`;
 
   const size = wordList.length;
   while (i < size) {
     const we = wordList[i];
+    const glyphs = we.glyphs;
+    const collisions = we.collisions;
     if (we.getChecked()) {
-      txt = txt + we.getLine()+'\n';
+      txt += we.getLine();
+      if (we.glyphs) {
+        txt += '" ';
+        glyphs.forEach((ge, idx) => {
+          const gid = ge.gid;
+          const gn = parseInt(gid, 10);
+          let markers = '';
+          if (ge.colGlyph) markers += icons.GG;
+          if (ge.colBaseToBase) markers += icons.cb;
+          if (ge.colMarkToBase) markers += icons.cx;
+          if (ge.colMarkToMark) markers += icons.cm;
+          txt += `${markers}`;
+          const name = hbTest.getGlyphName(gid);
+          if (name)
+            txt += `${name} `;
+          else
+            txt += `${gid} `;
+          });
+        txt += '"\t';
+      }      
+      txt += '\n';
     }
     i++;
   }
-  var bb = new Blob([txt], {type: 'text/plain;charset=utf-8'});
-  var a = document.createElement('a');
-  a.download = 'FontForceField.'+DateTimeForFilename()+'.txt';
-  a.href = window.URL.createObjectURL(bb);
-  a.target='_blank';
-  a.click();
+  saveTextToFile(txt, 'FontForceField.'+DateTimeForFilename()+'.txt');
+}
+
+const icons = {
+  'GG' : String.fromCodePoint(0x1f7e5), //'\xf0\x9f\x9f\xa5';// 🟥
+  'cb' : String.fromCodePoint(0x1f7e7), //'\xf0\x9f\x9f\xa7'; // 🟧
+  'cx' : String.fromCodePoint(0x1f7ea), //'\xf0\x9f\x9f\xaa'; // 🟪
+  'cm' : String.fromCodePoint(0x1f7e6), //'\xf0\x9f\x9f\xa6'; // 🟦
+}
+
+function gidOrNameCombined(gid) {
+  const name = hbTest.getGlyphName(gid);
+  if (name)
+    return `"${gid}:${name}"`;
+  else
+    return `${gid}`;
+}
+
+function gidOrNameHorizontalPair(gid) {
+  const name = hbTest.getGlyphName(gid);
+  if (name)
+    return `${gid},"${name}"`;
+  else
+    return `${gid},`;
+}
+
+function generateMatrixFor(which, abbrev, desc) {
+  const columnSet = new Set();
+  which.forEach( (item) => {
+    item.forEach( (item2, gid2) => {
+      columnSet.add(gid2);
+    });
+  });
+  const columnArray = Array.from(columnSet);
+  columnArray.sort( (a,b) => { return parseInt(a,10)-parseInt(b,10); });
+  const columnSum = [];
+
+  let txt = '';
+  txt += '------------------------------------\r\n';
+  txt += `Collisions for: "${abbrev}" ${icons[abbrev]} = "${desc}"\r\n`;
+  txt += '------------------------------------\r\n';
+  txt += ',GID';
+  columnArray.forEach( (i) => {
+    //txt += `,${gidOrNameCombined(i)}`;
+    txt += `,${i}`;
+  })
+  txt += ',TOTAL\r\n';
+  txt += `GID,NAME`;
+  columnArray.forEach( (i) => {
+    const name = hbTest.getGlyphName(i);
+    if (name)
+      txt += `,"${name}"`;
+    else
+      txt += `,`;
+  })
+  txt += `\r\n`;
+
+  which.forEach( (item, gid) => {
+    let total = 0;
+    txt += `${gidOrNameHorizontalPair(gid)}`;
+    columnArray.forEach( (gid2) => {
+      const count = which[gid][gid2];
+      if (count) {
+        txt += `,${count}`;
+        total += count;
+        columnSum[gid2] = (columnSum[gid2] || 0) + count;
+      }
+      else
+        txt += `,`;
+    });
+    txt += `,${total}\r\n`;
+  });
+
+  let total = 0;
+  txt += ',TOTAL';
+  columnArray.forEach( (gid2) => {
+    const count = columnSum[gid2];
+    if (count) {
+      txt += `,${count}`;
+      total += count;
+    }
+    else
+      txt += `,`;
+  });
+  txt += `,${total}\r\n`;
+
+  txt += '\r\n';
+  return txt;
+}
+
+function saveCollisionMatrix(event) {
+  let txt = '';
+  txt += generateCommentHeader();
+  txt += '\r\n';
+  txt += generateMatrixFor(collisionPairs.colGlyph,      'GG', 'Glyph to Glyph!!') + '\r\n';
+  txt += generateMatrixFor(collisionPairs.colBaseToBase, 'cb', 'Base to Base (near)') + '\r\n';
+  txt += generateMatrixFor(collisionPairs.colMarkToBase, 'cx', 'Mark to Base (near)') + '\r\n';
+  txt += generateMatrixFor(collisionPairs.colMarkToMark, 'cm', 'Mark to Mark (near)') + '\r\n';
+  saveTextToFile(txt, 'FontForceField.Collisions.'+DateTimeForFilename()+'.txt');
 }
 
 // Debug function
@@ -3115,6 +3328,7 @@ window.updateValues = updateValues;
 window.updateJSON = updateJSON;
 window.rateWordList = rateWordList;
 window.saveResults  = saveResults;
+window.saveCollisionMatrix = saveCollisionMatrix;
 window.AbortProgress = AbortProgress;
 window.randomWord = randomWord;
 window.pickWord = pickWord;
