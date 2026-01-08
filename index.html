@@ -262,14 +262,18 @@ dialog {
   <tr><td width='25%'>Word List:</td>
     <td>
       <div id='wordListDetails'>(drag .txt. file here)</div>
-      <input type='checkbox' id='cbIncludeGlyphs' title='When checked, include Glyph collision data in notes'><label for='cbIncludeGlyphs'>Glyph Collisions</label></input>
+      <input type='checkbox' id='cbIncludeGlyphs' title='When checked, include Glyph collision data in notes'><label for='cbIncludeGlyphs'>Glyph Collisions to Notes</label></input>
+      <br/><input type='checkbox' id='cbFarExtraMark' title='Include mark path in the extra far base (takes longer!)'>Analyse Marks that glue Extra Far fields</input>
+      <span hidden> <!-- extra time is negligible - leave enabled and hidden -->
+        <input type='checkbox' id='cbCalculateIslandCount' checked title='Find island value for each glyph'><label for='cbCalculateIslandCount'>Calculate Islands</label></input>
+      </span>
+      <br/>
       <button hidden onclick='rateWordList();' id='btnRateWordList'>Rate!</button>
       <br/>
       <button onclick='saveResults();' hidden id='saveListButton'>Save List</button>
       <br/>
       <button onclick='saveCollisionMatrix();' hidden id='btnSaveCollisionMatrix'>Save Collision Matrix</button>
       <div id='divFarExtraMark' hidden>
-        <br/><input type='checkbox' id='cbFarExtraMark' title='Include mark path in the extra far base (takes longer!)'>Include Mark in Extra Far</input>
       </div>
     </td>
   </tr>
@@ -1181,6 +1185,31 @@ class CPaths64 {
       this.updateWidthHeight();
     }
   }
+  getPathPoint(pn, n) {
+    const psize = this.paths64.size();
+    if (pn > psize) return undefined;
+    let result = undefined;
+    const path = this.paths64.get(pn);
+    if (n < path.size()) {
+      result = path.get(n);
+    }
+    path.delete();
+    return result; // not sure if the point needs to be deleted??!!
+  }
+  findPointInPaths(point) {
+    if (!point) return -1;
+    const { PointInPolygon64 } = Clipper2Z;
+    const size = this.paths64.size();
+    let result = undefined;
+    for (let i=0; i<size; i++) {
+      const path = this.paths64.get(i);
+      const pip = PointInPolygon64(point, path);
+      //~~//console.log('fpip', pip); //~~
+      path.delete();
+      if (pip.value < 2) return (i);
+    }
+    return -1;
+  }
 }
 
 class GlyphSet {
@@ -1657,6 +1686,7 @@ class HarfBuzzForceFieldClass {
           word: we.getWord(),
           checked: we.getChecked(),
           note: we.getNote(),
+          info: we.getInfo(),
         }
         );
     }
@@ -2001,6 +2031,7 @@ function updateValues() {
     markFarValue.innerText      = markFar.value;
   }
   //test(inputText.value);
+  updateOptionsObject();
   var res = processWord(inputText.value, true);
   wordRating.innerText = res.rating;
 }
@@ -2083,7 +2114,7 @@ function updateJSON() {
         const values = data[key].values;
         if (values) hbTest.setFarValues(values);
         hbTest.farValueOk = data[key].ok;
-        divFarExtraMark.hidden =  (!data[key].markPath);
+        divFarExtraMark.hidden =  (typeof data[key].markPath === 'undefined');
         if (divFarExtraMark.hidden) cbFarExtraMark.checked = false;
         checkMarkPath = data[key].markPath;
       }
@@ -2101,7 +2132,7 @@ function updateJSON() {
       }
     }
   } catch (e) {
-    console.log(e);//~~~~
+    console.log(e);//~~
     jsonError.innerText = e;
   }
   if (fontCompare) {
@@ -2131,6 +2162,7 @@ function updateJSON() {
       jsonError.innerText = `Missing {'mark':{'n':..., 'nb':..., 'f':...}}'!`;
     }
   }
+  updateOptionsObject();
   var res = processWord(inputText.value, true);
   wordRating.innerText = res.rating;
   disableDebugButtons();
@@ -2241,15 +2273,36 @@ function glyphSetToText(s) {
   return '['+txt.slice(0, -1)+']';
 }
 
+function islandIndexForPoint(islands, point) {
+  return islands.findPointInPaths(point) + 1;
+}
+
+let options = {};
+function updateOptionsObject() {
+  options.showFar      = cbShowFar.checked;
+  options.showFarMarks = cbShowFarMarks.checked;
+  options.showFarExtra = cbShowFarExtra.checked;
+  options.showNear     = cbShowNear.checked;
+  options.showNearBase = cbShowNearBase.checked;
+  options.showGlyphs   = cbShowGlyphs.checked;
+  options.showCollisions = cbShowCollisions.checked;
+  options.calculateMarkGlue = cbFarExtraMark.checked;
+  options.calculateIslandCount = cbCalculateIslandCount.checked;
+  options.solidColour    = colourSolid.checked;
+  options.showGids       = cbShowGids.checked;
+  options.showGidNames   = cbShowGidNames.checked;
+}
+
 function processWord(word, display) {
-  const showFar      = display && cbShowFar.checked;
-  //~~~~//cbShowFarMarks.disabled = !showFar;
-  const showFarMarks = display && cbShowFarMarks.checked;
-  const showFarExtra = display && cbShowFarExtra.checked;
-  const showNear     = display && cbShowNear.checked;
-  const showNearBase = display && cbShowNearBase.checked;
-  const showGlyphs   = display && cbShowGlyphs.checked;
-  const showCollisions = display && cbShowCollisions.checked;
+  const showFar      = display && options.cbShowFar;
+  //~~//cbShowFarMarks.disabled = !showFar;
+  const showFarMarks = display && options.showFarMarks;
+  const showFarExtra = display && options.showFarExtra;
+  const showNear     = display && options.showNear;
+  const showNearBase = display && options.showNearBase;
+  const showGlyphs   = display && options.showGlyphs;
+  const showCollisions = display && options.showCollisions;
+  const calculateMarkGlue = options.calculateMarkGlue;
 
   var wordRating = '';
   var buffer = hb.createBuffer();
@@ -2321,9 +2374,9 @@ function processWord(word, display) {
   pos.y = 0;
   var colourIndex = 0;
   var n=0;  // the result index
-  const solidColour = colourSolid.checked;
-  const showGids = cbShowGids.checked;
-  const showGidNames = cbShowGidNames.checked;
+  const solidColour  = options.solidColour;
+  const showGids     = options.showGids;
+  const showGidNames = options.showGidNames;
 
   const glyphSequence = [];
 
@@ -2539,6 +2592,20 @@ function processWord(word, display) {
   }
 
   var islandsBase = overallFar.countIslands();
+  if (options.calculateIslandCount && (islandsBase > 1)) {
+    // Find the island# for each glyph
+    for (let idx=0; idx<result.length; idx++) {
+      const x = result[idx];
+      const p = x.gs.path('far');
+      const firstPoint = p.getPathPoint(0, 0);
+      if (!hbTest.isMarkClass(x.g)) {
+        // Only take account of base-glyphs. Ignore marks
+        const island = islandIndexForPoint(overallFar, firstPoint);
+        glyphSequence[idx].island = island;      
+      }
+    }
+  }
+
   if (display && showFarExtra) {
     for (let [k,v] of Object.entries(overallFarExtra)) {
       hbTest.drawCPaths(v, null, {strokeColor:svgColors.maxExtra, strokeWidth:4});
@@ -2610,11 +2677,14 @@ function processWord(word, display) {
     let okPercent = undefined;
     if (ok) okPercent = 0;
     const skipOk = !hbTest.farValueOk;
-    const cmp = (cbFarExtraMark.checked) ? checkMarkPath : undefined;
-
+    const cmp = calculateMarkGlue ? checkMarkPath : undefined;
+    const tfvOptions = {
+      checkMarkPath: cmp,
+    }
+    
     for (let i=0; i<hbTest.farValues.length; i++) {
       const p = hbTest.farValues[i];
-      const test = testFarValue(result, `far${p}`, {checkMarkPath: cmp});
+      const test = testFarValue(result, `far${p}`, tfvOptions);
       if (test.fb && (p > farBasePercent)) farBasePercent = p;
       if (test.fm && (p > farMarkPercent)) farMarkPercent = p;
       if (test.ok && (isNaN(okPercent) || (p < okPercent))) okPercent = p;
@@ -2627,9 +2697,10 @@ function processWord(word, display) {
       }        
     }
 
-    result.forEach((x) => {
+    result.forEach((x, idx) => {
       const gs = x.gs;
         if (x.glue) {
+          glyphSequence[idx].glue = true; // This mark is gluing islands together
           markIsGlue = true;
           if (showFarExtra) {
             // Marked as a glue by the extra far field calc
@@ -2727,18 +2798,22 @@ class wordEntryClass {
     const tempArray = line.split('\t');
     this.word = tempArray[0];
     this.note = tempArray[1] || '';
+    this.info = tempArray.slice(2).join('\t');
     this.checked = false;
     //??//this.checked = (tempArray[2] === 'x') || (tempArray[2] === 'X'); //??
   }
   getWord()     { return this.word; }
   getChecked()  { return this.checked; }
   setChecked(isChecked) { this.checked = isChecked; }
-  setNote(txt)  { this.note = txt; }
+  setNote(txt)  { this.note = txt.trim(); }
   getNote()     { return this.note; }
+  setInfo(txt)  { this.info = txt; }
+  getInfo()     { return this.info; }
   // The line for the check list file output
   getLine() {
     const note = this.note || '';
-    var txt = this.word + '\t' + note;
+    const info = this.info || '';
+    var txt = this.word + '\t' + note + '\t' + info;
     // Now expand the note into separate columns
     // Order: GG#,cb#,cx#,ca:#,ok,fb,fm
     let r,v;
@@ -2767,13 +2842,7 @@ class wordEntryClass {
     r = note.match(/fm(\d*)/);
     if (r) txt += `\t${r[1] || '0'}`; else txt += '\t';
 
-    // Finish the line
-    /*
-    while (txt.endsWith('\t')) {
-      txt = txt.slice(0, txt.length-1);
-    }
-    */
-    return txt;
+    return txt.trimEnd();
   }
 }
 
@@ -2951,6 +3020,13 @@ function updateTransfer(xfer) {
 
 var loopStarted;
 
+function disableControlsDuringLoop(dis) {
+  btnFCWL.disabled          = dis;
+  btnRateWordList.disabled  = dis;
+  cbIncludeGlyphs.disabled  = dis;
+  cbFarExtraMark.disabled   = dis;
+}
+
 async function rateWordList() {
   const total = wordList.length;
   var i = 0;
@@ -2962,17 +3038,47 @@ async function rateWordList() {
 
   setDisableAllDivElements('slidersDiv', true);
   setDisableAllDivElements('jsonDiv', true);
-  btnFCWL.disabled = true;
-  btnRateWordList.disabled = true;
-
+  disableControlsDuringLoop(true);
   collisionPairs = {};
+  updateOptionsObject();
   AbortReset();
   for (let i=0; i<total; i++) {
     var word = wordList[i].getWord();
     var res = processWord(word);
-    wordList[i].glyphs = res.glyphs;
-    wordList[i].collisions = res.collisions;
-    wordList[i].setNote(res.rating);
+    const we = wordList[i];
+    we.glyphs = res.glyphs;
+    we.collisions = res.collisions;
+    we.setNote(res.rating);
+    let txt = '';
+    if (res.glyphs) {
+      const glyphs = res.glyphs;
+      txt += '"';
+      let lastIsland = -1;
+      glyphs.forEach((ge, idx) => {
+        const gid = ge.gid;
+        const gn = parseInt(gid, 10);
+        let markers = '';
+        if (ge.colGlyph) markers += icons.GG;
+        if (ge.colBaseToBase) markers += icons.cb;
+        if (ge.colMarkToBase) markers += icons.cx;
+        if (ge.colMarkToMark) markers += icons.cm;
+        if (ge.glue) markers += icons.glue;
+        if (ge.island && (ge.island > 0)) {
+          if ((lastIsland > 0) && (ge.island != lastIsland)) {
+            markers += icons.island;
+          }
+          lastIsland = ge.island;
+        }
+        txt += `${markers}`;
+        const name = hbTest.getGlyphName(gid);
+        if (name)
+          txt += `${name} `;
+        else
+          txt += `${gid} `;
+        });
+      txt = txt.trimEnd(txt) + '"';
+      we.setInfo(txt);
+    }
     if (res.rating != '') {
       wordList[i].setChecked(true);
       checkcount++;
@@ -2996,8 +3102,7 @@ async function rateWordList() {
   btnSaveCollisionMatrix.hidden = false;
   setDisableAllDivElements('slidersDiv', false);
   setDisableAllDivElements('jsonDiv', false);
-  btnFCWL.disabled = false;
-  btnRateWordList.disabled = false;
+  disableControlsDuringLoop(false);
   //~~//console.log('collisionPairs', collisionPairs); //~~
 }
 
@@ -3093,7 +3198,7 @@ function saveResults() {
   var i = 0;
 
   txt = generateCommentHeader();
-  txt += `\t#Word\tNote\tGlyphGlyph(GG)\tBaseBase(cb)\tMarkBase(cx)\tArea(ca)\tOK(ok)\tFarBase(fb)\tFarMark(fm)\tGlyphs (GG=${icons.GG},cb=${icons.cb},cx=${icons.cx},cm=${icons.cm})\r\n`;
+  txt += `\t#Word\tNote\tGlyphGlyph(GG)\tBaseBase(cb)\tMarkBase(cx)\tArea(ca)\tOK(ok)\tFarBase(fb)\tFarMark(fm)\tGlyphs (GG=${icons.GG},cb=${icons.cb},cx=${icons.cx},cm=${icons.cm},glue=${icons.glue},gap=${icons.island})\r\n`;
 
   const size = wordList.length;
   while (i < size) {
@@ -3102,25 +3207,6 @@ function saveResults() {
     const collisions = we.collisions;
     if (we.getChecked()) {
       txt += we.getLine();
-      if (we.glyphs) {
-        txt += '" ';
-        glyphs.forEach((ge, idx) => {
-          const gid = ge.gid;
-          const gn = parseInt(gid, 10);
-          let markers = '';
-          if (ge.colGlyph) markers += icons.GG;
-          if (ge.colBaseToBase) markers += icons.cb;
-          if (ge.colMarkToBase) markers += icons.cx;
-          if (ge.colMarkToMark) markers += icons.cm;
-          txt += `${markers}`;
-          const name = hbTest.getGlyphName(gid);
-          if (name)
-            txt += `${name} `;
-          else
-            txt += `${gid} `;
-          });
-        txt += '"\t';
-      }      
       txt += '\n';
     }
     i++;
@@ -3129,10 +3215,13 @@ function saveResults() {
 }
 
 const icons = {
-  'GG' : String.fromCodePoint(0x1f7e5), //'\xf0\x9f\x9f\xa5';// 🟥
-  'cb' : String.fromCodePoint(0x1f7e7), //'\xf0\x9f\x9f\xa7'; // 🟧
-  'cx' : String.fromCodePoint(0x1f7ea), //'\xf0\x9f\x9f\xaa'; // 🟪
-  'cm' : String.fromCodePoint(0x1f7e6), //'\xf0\x9f\x9f\xa6'; // 🟦
+  'GG'   : String.fromCodePoint(0x1f7e5), // 🟥 - glyphs that collide (serious)
+  'cb'   : String.fromCodePoint(0x1f7e7), // 🟧 - collision near base-base
+  'cx'   : String.fromCodePoint(0x1f7ea), // 🟪 - collision near base-mark
+  'cm'   : String.fromCodePoint(0x1f7e6), // 🟦 - collision near mark-mark
+  'glue' : String.fromCodePoint(0x1f7e2), // 🟢 - mark glyph that glues together two far islands
+  //'island' : String.fromCodePoint(10052), // ❄️ - base glyph island marker (not this as it shows black on Calibri in FCWL)
+  'island' : String.fromCodePoint(0x1F7E1), // 🟡 - base glyph island marker
 }
 
 function gidOrNameCombined(gid) {
@@ -3346,11 +3435,12 @@ window.list = {
 }
 window.setCheckPath = setCheckPath;
 window.svgColors = svgColors;
+window.getWordList = function() {return wordList;}
 
 </script>
 
 </br>
-</br>2026-01-07 i
+</br>2026-01-08 p
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
