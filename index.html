@@ -255,6 +255,8 @@ dialog {
   <tr><td>Collisions:</td><td><span style='color:red' id='colNotify'></span></td></tr>
   <tr><td>Too Far:</td><td><span style='color:red' id='farNotify'></span></td></tr>
   <tr><td>Output:</td><td><span style='color:blue' id='wordRating'></span></td></tr>
+  <tr><td>Info:</td><td>
+      <span style='color:black;font-size:85%;' id='wordInfo'></span></td></tr>
   </table>
 </td>
 <td width='50%' valign='top'>
@@ -263,7 +265,7 @@ dialog {
     <td>
       <div id='wordListDetails'>(drag .txt. file here)</div>
       <input type='checkbox' id='cbIncludeGlyphs' title='When checked, include Glyph collision data in notes'><label for='cbIncludeGlyphs'>Glyph Collisions to Notes</label></input>
-      <br/><input type='checkbox' id='cbFarExtraMark' title='Include mark path in the extra far base (takes longer!)'>Analyse Marks that glue Extra Far fields</input>
+      <br/><input type='checkbox' id='cbFarExtraMark' title='Include mark path in the extra far base (takes longer!)' checked>Analyse Marks that glue Extra Far fields</input>
       <span hidden> <!-- extra time is negligible - leave enabled and hidden -->
         <input type='checkbox' id='cbCalculateIslandCount' checked title='Find island value for each glyph'><label for='cbCalculateIslandCount'>Calculate Islands</label></input>
       </span>
@@ -2034,6 +2036,7 @@ function updateValues() {
   updateOptionsObject();
   var res = processWord(inputText.value, true);
   wordRating.innerText = res.rating;
+  wordInfo.innerText = res.info
 }
 
 function getOldOrNew(theOld, theNew) {
@@ -2293,8 +2296,41 @@ function updateOptionsObject() {
   options.showGidNames   = cbShowGidNames.checked;
 }
 
+function createInfo(resGlyphs) {
+  let txt = '';
+  if (resGlyphs) {
+    const glyphs = resGlyphs;
+    txt += '"';
+    let lastIsland = -1;
+    glyphs.forEach((ge, idx) => {
+      const gid = ge.gid;
+      const gn = parseInt(gid, 10);
+      let markers = '';
+      if (ge.colGlyph) markers += icons.GG;
+      if (ge.colBaseToBase) markers += icons.cb;
+      if (ge.colMarkToBase) markers += icons.cx;
+      if (ge.colMarkToMark) markers += icons.cm;
+      if (ge.glue) markers += icons.glue;
+      if (ge.island && (ge.island > 0)) {
+        if ((lastIsland > 0) && (ge.island != lastIsland)) {
+          markers += icons.island;
+        }
+        lastIsland = ge.island;
+      }
+      txt += `${markers}`;
+      const name = hbTest.getGlyphName(gid);
+      if (name)
+        txt += `${name} `;
+      else
+        txt += `${gid} `;
+      });
+    txt = txt.trimEnd(txt) + '"';
+  }
+  return txt;
+}
+
 function processWord(word, display) {
-  const showFar      = display && options.cbShowFar;
+  const showFar      = display && options.showFar;
   //~~//cbShowFarMarks.disabled = !showFar;
   const showFarMarks = display && options.showFarMarks;
   const showFarExtra = display && options.showFarExtra;
@@ -2759,6 +2795,7 @@ function processWord(word, display) {
     counts: collisionCounts,
     glyphs: glyphSequence,
     collisions: colSet,
+    info: createInfo(glyphSequence),
   };
 }
 
@@ -3049,36 +3086,7 @@ async function rateWordList() {
     we.glyphs = res.glyphs;
     we.collisions = res.collisions;
     we.setNote(res.rating);
-    let txt = '';
-    if (res.glyphs) {
-      const glyphs = res.glyphs;
-      txt += '"';
-      let lastIsland = -1;
-      glyphs.forEach((ge, idx) => {
-        const gid = ge.gid;
-        const gn = parseInt(gid, 10);
-        let markers = '';
-        if (ge.colGlyph) markers += icons.GG;
-        if (ge.colBaseToBase) markers += icons.cb;
-        if (ge.colMarkToBase) markers += icons.cx;
-        if (ge.colMarkToMark) markers += icons.cm;
-        if (ge.glue) markers += icons.glue;
-        if (ge.island && (ge.island > 0)) {
-          if ((lastIsland > 0) && (ge.island != lastIsland)) {
-            markers += icons.island;
-          }
-          lastIsland = ge.island;
-        }
-        txt += `${markers}`;
-        const name = hbTest.getGlyphName(gid);
-        if (name)
-          txt += `${name} `;
-        else
-          txt += `${gid} `;
-        });
-      txt = txt.trimEnd(txt) + '"';
-      we.setInfo(txt);
-    }
+    we.setInfo(res.info);
     if (res.rating != '') {
       wordList[i].setChecked(true);
       checkcount++;
@@ -3440,7 +3448,7 @@ window.getWordList = function() {return wordList;}
 </script>
 
 </br>
-</br>2026-01-08 p
+</br>2026-01-12 o
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
