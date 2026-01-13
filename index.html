@@ -261,11 +261,15 @@ dialog {
 </td>
 <td width='50%' valign='top'>
   <table border=0 width='100%' id='WordsDragDrop'>
-  <tr><td width='25%'>Word List:</td>
+  <tr><td width='25%' valign='top'>Word List:</td>
     <td>
       <div id='wordListDetails'>(drag .txt. file here)</div>
       <input type='checkbox' id='cbIncludeGlyphs' title='When checked, include Glyph collision data in notes'><label for='cbIncludeGlyphs'>Glyph Collisions to Notes</label></input>
       <br/><input type='checkbox' id='cbFarExtraMark' title='Include mark path in the extra far base (takes longer!)' checked>Analyse Marks that glue Extra Far fields</input>
+      <br/>
+      Info glyph order:
+      <input type='radio' id='rbVisual' name='infoOrder' value='visual'>&rarr;Shaper</input>
+      &nbsp; <input type='radio' id='rbLogical' name='infoOrder' value='logical' checked><span id='divLogicalOrder'></span>Logical</input>
       <span hidden> <!-- extra time is negligible - leave enabled and hidden -->
         <input type='checkbox' id='cbCalculateIslandCount' checked title='Find island value for each glyph'><label for='cbCalculateIslandCount'>Calculate Islands</label></input>
       </span>
@@ -451,6 +455,8 @@ UpdateListener('cbShowNearBase', 'input');
 UpdateListener('cbShowGlyphs', 'input');
 UpdateListener('cbShowCollisions', 'input');
 UpdateListener('cbFarExtraMark', 'input');
+UpdateListener('rbLogical', 'input');
+UpdateListener('rbVisual', 'input');
 
 UpdateListener('cbShowGids', 'input');
 UpdateListener('cbShowGidNames', 'input');
@@ -1962,8 +1968,13 @@ function shapeAndFindAttachments(font, buffer, features) {
   return data;
 }
 
+function isHarfBuzzBufferLTR(bufferResults)
+{
+  return (bufferResults && (bufferResults.length > 0) && (bufferResults[0].cl === 0));
+}
+
 function unifyAttachmentsOrder(attachments, bufferResults) {
-  if (bufferResults && (bufferResults.length > 0) && (bufferResults[0].cl === 0))
+  if (isHarfBuzzBufferLTR(bufferResults))
     return attachments; // LTR all ok
   // The result is RTL, so the traced glyph indices need swapping to match the visual order
   const glyphCount = bufferResults.length;
@@ -2294,15 +2305,25 @@ function updateOptionsObject() {
   options.solidColour    = colourSolid.checked;
   options.showGids       = cbShowGids.checked;
   options.showGidNames   = cbShowGidNames.checked;
+  options.logicalOrder   = rbLogical.checked;
 }
 
-function createInfo(resGlyphs) {
+function createInfo(resGlyphs, rtl) {
   let txt = '';
   if (resGlyphs) {
     const glyphs = resGlyphs;
     txt += '"';
+    if (rtl) txt += icons.rtl + ' ';
     let lastIsland = -1;
-    glyphs.forEach((ge, idx) => {
+    const max = glyphs.length;
+    let idx = rtl ? (max-1) : 0;
+    while (true) {
+      if (rtl) {
+        if (idx < 0) break;
+      } else {
+        if (idx >= max) break;
+      }
+      const ge = glyphs[idx];
       const gid = ge.gid;
       const gn = parseInt(gid, 10);
       let markers = '';
@@ -2323,7 +2344,11 @@ function createInfo(resGlyphs) {
         txt += `${name} `;
       else
         txt += `${gid} `;
-      });
+      if (rtl)
+        idx--;
+      else
+        idx++;
+    }
     txt = txt.trimEnd(txt) + '"';
   }
   return txt;
@@ -2360,6 +2385,10 @@ function processWord(word, display) {
 
   const font = hbTest.font;
   var result = buffer.json(font);
+  const rtl = !isHarfBuzzBufferLTR(result) && options.logicalOrder;
+  if (display) {
+    divLogicalOrder.innerText = !isHarfBuzzBufferLTR(result) ? icons.rtl : icons.ltr;
+  }
   attachments = unifyAttachmentsOrder(attachments, result);
 
   const { Paths64, Xor64, Intersect64, Union64, TranslatePaths64, FillRule, IsPositive64 } = Clipper2Z;
@@ -2795,7 +2824,7 @@ function processWord(word, display) {
     counts: collisionCounts,
     glyphs: glyphSequence,
     collisions: colSet,
-    info: createInfo(glyphSequence),
+    info: createInfo(glyphSequence, rtl),
   };
 }
 
@@ -3062,6 +3091,8 @@ function disableControlsDuringLoop(dis) {
   btnRateWordList.disabled  = dis;
   cbIncludeGlyphs.disabled  = dis;
   cbFarExtraMark.disabled   = dis;
+  rbLogical.disabled = dis;
+  rbVisual.disabled = dis;
 }
 
 async function rateWordList() {
@@ -3230,6 +3261,8 @@ const icons = {
   'glue' : String.fromCodePoint(0x1f7e2), // 🟢 - mark glyph that glues together two far islands
   //'island' : String.fromCodePoint(10052), // ❄️ - base glyph island marker (not this as it shows black on Calibri in FCWL)
   'island' : String.fromCodePoint(0x1F7E1), // 🟡 - base glyph island marker
+  'rtl'    : String.fromCodePoint(0x2190),  // ←
+  'ltr'    : String.fromCodePoint(0x2192),  // →
 }
 
 function gidOrNameCombined(gid) {
@@ -3448,7 +3481,7 @@ window.getWordList = function() {return wordList;}
 </script>
 
 </br>
-</br>2026-01-12 o
+</br>2026-01-13 h
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
