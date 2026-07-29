@@ -2339,6 +2339,7 @@ function createInfo(resGlyphs, rtl) {
         lastIsland = ge.island;
       }
       txt += `${markers}`;
+      //??//if (hbTest.isMarkClass(gid)) txt += `'`; // Marker for Mark
       const name = hbTest.getGlyphName(gid);
       if (name)
         txt += `${name} `;
@@ -2824,6 +2825,7 @@ function processWord(word, display) {
     counts: collisionCounts,
     glyphs: glyphSequence,
     collisions: colSet,
+    harfbuzz: result,
     info: createInfo(glyphSequence, rtl),
   };
 }
@@ -3114,6 +3116,7 @@ async function rateWordList() {
     var word = wordList[i].getWord();
     var res = processWord(word);
     const we = wordList[i];
+    we.harfbuzz = res.harfbuzz;
     we.glyphs = res.glyphs;
     we.collisions = res.collisions;
     we.setNote(res.rating);
@@ -3454,6 +3457,62 @@ function setCheckPath(pathName) {
   checkMarkPath = pathName;
 }
 
+
+// Ref: https://gist.github.com/Explosion-Scratch/357c2eebd8254f8ea5548b0e6ac7a61b
+function compressStringToArrayBuffer(txt, encoding = 'gzip') {
+  const byteArray = new TextEncoder().encode(txt);
+  const cs = new CompressionStream(encoding);
+  const writer = cs.writable.getWriter();
+  writer.write(byteArray);
+  writer.close();
+  const buff = new Response(cs.readable).arrayBuffer();
+  return buff;
+}
+
+function decompressArrayBufferToString(byteArray, encoding='gzip') {
+  const cs = new DecompressionStream(encoding);
+  const writer = cs.writable.getWriter();
+  writer.write(byteArray);
+  writer.close();
+  return new Response(cs.readable).arrayBuffer().then(function (arrayBuffer) {
+    return new TextDecoder().decode(arrayBuffer);
+  });
+}
+
+function encodeArrayBufferToBase64(arrayBuffer) {
+  const base64String = btoa(
+    new Uint8Array(arrayBuffer)
+      .reduce((data, byte) => data + String.fromCharCode(byte), '')
+  );
+  return base64String;
+}
+
+function decodeBase64ToArrayBuffer(base64String) {
+  return Uint8Array.from(atob(base64String), c=>c.charCodeAt(0));
+}
+
+
+async function saveWordListAsJson() {
+  let wl = [];
+  wordList.forEach((e) => {
+    e.harfbuzz.forEach((ge) => {
+      delete ge.gs;
+    });
+    wl.push(
+    {
+      word: e.getWord(),
+      note: e.getNote(),
+      info: e.getInfo(),
+      glyphs: e.glyphs,
+      harfbuzz: e.harfbuzz,
+    });
+  });
+  let json = JSON.stringify(wl, null, '\t');
+  const myBuff = await compressStringToArrayBuffer(json);
+  
+  saveTextToFile(json, "debug.fff.json");
+}
+
 window.updateValues = updateValues;
 window.updateJSON = updateJSON;
 window.rateWordList = rateWordList;
@@ -3478,10 +3537,12 @@ window.setCheckPath = setCheckPath;
 window.svgColors = svgColors;
 window.getWordList = function() {return wordList;}
 
+window.saveJson = saveWordListAsJson;
+
 </script>
 
 </br>
-</br>2026-01-13 h
+</br>2026-01-22 o
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
