@@ -628,14 +628,14 @@ function debugGroup() {
   const groupName = debugInput.value;
   let countGlyph = 0;
   let countGroup = 0;
-  let txt = '';
+  let txt = '';  
   for (let [key, group] of Object.entries(hbTest?.groups)) {
     let thisGroup = ((groupName.length == 0) || (groupName == key));
     if (!thisGroup) {
       // Check to see if the `groupName` is a glyph name...
       for (let vv of group) {
         const name = hbTest.getGlyphName(vv);
-        if ((name == groupName) || (vv == parseInt(groupName))) {
+        if ((name.includes(groupName)) || (vv == parseInt(groupName))) {
           thisGroup = true;
           break;
         }
@@ -647,7 +647,10 @@ function debugGroup() {
       for (let vv of group) {
         countGlyph++;
         const name = hbTest.getGlyphName(vv);
-        txt += `  ${vv}\t${name || ''}\r\n`;
+        if ((groupName !== '') && ((name.includes(groupName)) || (vv == parseInt(groupName))))
+          txt += `  ${vv}\t${name || ''}\t<---\r\n`;
+        else        
+          txt += `  ${vv}\t${name || ''}\r\n`;
       }
       txt += '\r\n\r\n';
     }
@@ -3542,7 +3545,7 @@ window.saveJson = saveWordListAsJson;
 </script>
 
 </br>
-</br>2026-01-22 o
+</br>2026-10-01 10:45
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
