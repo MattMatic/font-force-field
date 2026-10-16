@@ -181,6 +181,12 @@ dialog {
   <tr><td>Mark Near:</td><td><input type="range" style="width:60%"  value="10"  min="0" max="100" step="1" id="markNear" oninput="updateValues();"><label id='markNearValue'></label></td></tr>
   <tr><td>Mark-Base Near:</td><td><input type="range" style="width:60%"  value="5"  min="0" max="100" step="1" id="markNearBase" oninput="updateValues();"><label id='markNearBaseValue'></label></td></tr>
   <tr><td>Mark Far:</td><td><input type="range" style="width:60%"  value="100" min="0" max="500" step="1" id="markFar" oninput="updateValues();"><label id='markFarValue'></label></td></tr>
+
+<!--
+  <tr><td width='25%'>Angle:</td><td><input type="range" style="width:60%" value="45"  min="0" max="360" step="5" id="msAngle" oninput="updateValues();"><label id='msAngleValue'></label></td></tr>
+  <tr><td width='25%'>Width:</td><td><input type="range" style="width:60%" value="0"  min="0" max="500" step="5" id="msWidth" oninput="updateValues();"><label id='msWidthValue'></label></td></tr>
+  -->
+
 </table>
 </span>
 <span id='jsonDiv' hidden>
@@ -474,6 +480,8 @@ var hbfcwl = null;
 var api = {};
 var fontFileName = '';
 var checkMarkPath = undefined;
+
+const FAR_MIN_ISLAND_AREA = 100;
 
 function openFontCompareWordListTool() {
   api = {};
@@ -987,6 +995,212 @@ function processRangeInteger(txt, groupSet, func) {
   return count;
 }
 
+
+//--------------------------------------------------------------
+// Claude generated path expansion code
+//--------------------------------------------------------------
+const rad = Math.PI / 180;
+
+function pushPath(dst, pts) {
+  if (pts.length < 3) return;
+  const q = new Clipper2Z.Path64();
+  for (const [x, y] of pts) {
+    const pt = new Clipper2Z.Point64(BigInt(x), BigInt(y), 0n);   // drop 3rd arg for non-Z build
+    q.push_back(pt);
+    pt.delete();
+  }
+  dst.push_back(q);
+  q.delete();
+}
+
+/** Read a Paths64 into plain Number arrays (exact while |coord| < 2^53). */
+function readRings(paths) {
+  const rings = [];
+  for (let i = 0; i < paths.size(); i++) {
+    const p = paths.get(i), n = p.size(), xs = new Array(n), ys = new Array(n);
+    for (let k = 0; k < n; k++) {
+      const pt = p.get(k);
+      xs[k] = Number(pt.x);
+      ys[k] = Number(pt.y);
+      pt.delete();
+    }
+    p.delete();
+    rings.push({ xs, ys });
+  }
+  return rings;
+}
+
+/** Convex hull, counter-clockwise (y-up), monotone chain. Points are [x, y]. */
+function convexHull(pts) {                                 // CCW, monotone chain
+  pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lo = [], up = [];
+  for (const p of pts) {
+    while (lo.length > 1 && cr(lo[lo.length-2], lo[lo.length-1], p) <= 0) lo.pop();
+    lo.push(p);
+  }
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (up.length > 1 && cr(up[up.length-2], up[up.length-1], p) <= 0) up.pop();
+    up.push(p);
+  }
+  lo.pop(); up.pop();
+  return lo.concat(up);
+}
+
+/**
+ * Hull of (a + B) U (a + e + B), computed in O(m).
+ * B is a convex CCW brush (a 2-point "segment" brush is also valid).
+ * Returns an array of [x, y] vertices.
+ */
+function sweepPiece(ax, ay, ex, ey, B) {
+  const m = B.length, out = [];
+  const front = k => {
+    const p = B[k], q = B[(k+1) % m];
+    return (q[0]-p[0])*ey - (q[1]-p[1])*ex < 0;
+  };
+  for (let j = 0; j < m; j++) {
+    const fp = front((j + m - 1) % m), fn = front(j), [bx, by] = B[j];
+    if (fp && !fn)      out.push([ax+ex+bx, ay+ey+by], [ax+bx, ay+by]);
+    else if (!fp && fn) out.push([ax+bx, ay+by], [ax+ex+bx, ay+ey+by]);
+    else if (fn)        out.push([ax+ex+bx, ay+ey+by]);
+    else                out.push([ax+bx, ay+by]);
+  }
+  return out;
+}
+
+function expandWithBrush(paths, B) {
+  const bands = new Clipper2Z.Paths64();
+  try {
+    const rings = readRings(paths);
+    for (const { xs, ys } of rings) {
+      const n = xs.length;
+      for (let k = 0; k < n; k++) {
+        const j = (k + 1) % n, ex = xs[j] - xs[k], ey = ys[j] - ys[k];
+        if (ex || ey) pushPath(bands, sweepPiece(xs[k], ys[k], ex, ey, B));
+      }
+    }
+    const out = Clipper2Z.Union64(paths, bands, Clipper2Z.FillRule.NonZero);
+    return matchOrientation(out, totalSignedArea(rings));
+  } finally {
+    bands.delete();
+  }
+}
+
+/** Sum of the signed (shoelace) areas of the rings. Outer rings dominate holes, so the sign is the outer orientation. */
+function totalSignedArea(rings) {
+  let a = 0;
+  for (const { xs, ys } of rings) {
+    const n = xs.length;
+    for (let k = 0; k < n; k++) {
+      const j = (k + 1) % n;
+      a += xs[k] * ys[j] - xs[j] * ys[k];
+    }
+  }
+  return a;
+}
+
+/**
+ * Clipper's Union64 output has its own orientation, which can be the opposite of the input's.
+ * The caller unions this result with other fields under FillRule.NonZero, where mixed
+ * orientations cancel where they overlap (so the fields would not merge). Reverse every ring
+ * if needed so the result has the same orientation as the input. Takes ownership of `out`.
+ */
+function matchOrientation(out, inputArea) {
+  const rings = readRings(out);
+  const outArea = totalSignedArea(rings);
+  if (inputArea === 0 || outArea === 0 || (inputArea > 0) === (outArea > 0)) return out;
+  const fixed = new Clipper2Z.Paths64();
+  for (const { xs, ys } of rings) {
+    const pts = [];
+    for (let k = xs.length - 1; k >= 0; k--) pts.push([xs[k], ys[k]]);
+    pushPath(fixed, pts);
+  }
+  out.clear();
+  out.delete();
+  return fixed;
+}
+
+// ---- Brush spec: "REACH@DEG,..." (base 0)  or  "BASE,REACH@DEG,..." ----
+// Angles are y-up degrees (the yDown option flips them). REACH is the absolute
+// reach from the origin, not an addition to BASE.
+function parseBrushSpec(spec) {
+  const tokens = String(spec).split(',').map(s => s.trim()).filter(Boolean);
+  let base = 0;
+  const tips = [];
+  tokens.forEach((tok, i) => {
+    const at = tok.indexOf('@');
+    if (at < 0) {
+      if (i !== 0) throw new Error(`Brush spec "${spec}": bare number only allowed first (as base)`);
+      base = Number(tok);
+      if (!Number.isFinite(base) || base < 0) throw new Error(`Brush spec "${spec}": bad base "${tok}"`);
+    } else {
+      const reach = Number(tok.slice(0, at)), deg = Number(tok.slice(at + 1));
+      if (!Number.isFinite(reach) || reach <= 0 || !Number.isFinite(deg))
+        throw new Error(`Brush spec "${spec}": bad tip "${tok}"`);
+      tips.push({ reach, deg });
+    }
+  });
+  if (base === 0 && tips.length === 0) throw new Error(`Brush spec "${spec}": empty brush`);
+  return { base, tips };
+}
+
+function makeBrush(base, tips, arcTol = 0.25, yDown = false) {
+  const pts = [];
+  if (base > 0) {
+    const steps = Math.min(720, Math.max(8,
+      Math.ceil(Math.PI / Math.acos(Math.max(-1, 1 - arcTol / base)))));
+    const r = base / Math.cos(Math.PI / steps);   // tangent edges: straight sides offset by exactly `base`
+    for (let i = 0; i < steps; i++) {
+      const a = 2 * Math.PI * i / steps;
+      pts.push([Math.round(r * Math.cos(a)), Math.round(r * Math.sin(a))]);
+    }
+  } else {
+    pts.push([0, 0]);   // the brush must contain the origin for the per-edge sweep to be valid
+  }
+  for (const t of tips) {
+    const a = (yDown ? -t.deg : t.deg) * Math.PI / 180;
+    pts.push([Math.round(t.reach * Math.cos(a)), Math.round(t.reach * Math.sin(a))]);
+  }
+  return convexHull(pts);   // CCW; works for 2 points (a segment) too
+}
+
+// ---- Cache ----
+const brushCache = new Map();
+
+function getBrush(spec, arcTol = 0.25, yDown = false) {
+  const key = `${spec}|${arcTol}|${yDown ? 1 : 0}`;
+  let brush = brushCache.get(key);
+  if (brush === undefined) {
+    const { base, tips } = parseBrushSpec(spec);
+    brush = makeBrush(base, tips, arcTol, yDown);
+    brushCache.set(key, brush);
+  }
+  return brush;
+}
+
+const clearBrushCache = () => brushCache.clear();
+
+// Usage
+// Example 2: 40 base, 200 at -30°, 100 at +30°
+//const brush = makeBrush(40, [{ deg: -30, reach: 200 }, { deg: 30, reach: 100 }]);   // cache this
+//const result = expandWithBrush(glyph, brush);
+
+// const result = expandWithBrush(glyph, getBrush('40,200@-30,100@30'));
+// const spikeOnly = expandWithBrush(glyph, getBrush('200@-30'));   // base 0: glyph smeared along that vector
+
+//----^----^----^----^----^----^----^----^----^----^----^----^----
+//----------------------------------------------------------------
+
+// Debug and testing
+window.brush = {
+  cache: brushCache,
+  get: getBrush,
+  clear: clearBrushCache,
+  expand: expandWithBrush,
+}
+
+
 // Class to wrap up a Clipper2 Paths64 and Bounding Box
 // and provide some basic optimisation calculations
 class CPaths64 {
@@ -1086,21 +1300,33 @@ class CPaths64 {
   // settings.mitreLimit = 25
   // settings.arcTolerance = 0.1
   // settings.simplifyFactor = 0.5
+  // settings.expandPath = Paths64 for MinkowskiSum 'stroke' of expanded path
   inflateToNewCPaths64(idelta, settings) {
-    const { MakePath64, Paths64, InflatePaths64, SimplifyPaths64, JoinType, EndType } = Clipper2Z;
+    const { MakePath64, Paths64, InflatePaths64, SimplifyPaths64, JoinType, EndType, Union64, Union64FillRule, FillRule } = Clipper2Z;
     var result = new CPaths64();
     settings = settings || {};
-    if (!isExists(settings.jointype)) settings.jointype = /*JoinType.Miter; */ JoinType.Round;
-    if (!isExists(settings.mitreLimit)) settings.mitreLimit = 25; //idelta;// * idelta; //25
+    if (!isExists(settings.jointype)) settings.jointype = JoinType.Round;
+    if (!isExists(settings.mitreLimit)) settings.mitreLimit = 25;
     if (!isExists(settings.arcTolerance)) settings.arcTolerance = 0.1;
     if (!isExists(settings.simplifyFactor)) settings.simplifyFactor = 0.1;
-    var newpaths64 = InflatePaths64(this.paths64, idelta, settings.jointype, EndType.Polygon, settings.mitreLimit, settings.arcTolerance);
+    let p = this.paths64;
+    const brush = idelta.getBrush(); // settings.brush;
+    const value = idelta.getScale(); // idelta;
+    if (brush) {
+      p = expandWithBrush(p, brush);
+    }
+    let newpaths64 = InflatePaths64(p, value, settings.jointype, EndType.Polygon, settings.mitreLimit, settings.arcTolerance);
     if (settings.simplifyFactor > 0) {
-      var oldpaths64 = newpaths64;
+      const oldpaths64 = newpaths64;
       newpaths64 = SimplifyPaths64(oldpaths64, settings.simplifyFactor);
       oldpaths64.clear();
       oldpaths64.delete();
     }
+    /*
+    if (settings.brush) {
+      newpaths64 = expandWithBrush(newpaths64, settings.brush);
+    }
+    */
     result.setPaths64(newpaths64);
     //--//this.removeSmallAreas(idelta * idelta);
     return result;
@@ -1159,12 +1385,17 @@ class CPaths64 {
   // Count the positive paths in the set
   // (Used for finding 'far' glyphs)
   countIslands() {
-    const { IsPositive64 } = Clipper2Z;
+    const { IsPositive64, AreaPath64 } = Clipper2Z;
     const size = this.paths64.size();
     var count = 0;
     for (let i=0;i<size;i++) {
       const path = this.paths64.get(i);
-      if (IsPositive64(path)) count++;
+      const area = Math.abs(AreaPath64(path));
+      if (IsPositive64(path)) {
+        if (area > FAR_MIN_ISLAND_AREA) {
+          count++;
+        }
+      }
       path.delete();
     }
     return count;
@@ -1239,13 +1470,13 @@ class GlyphSet {
     if (this.paths[id]) this.paths[id].destroy();
     this.paths[id] = cpaths64;
   }
-  addInflated(id, amount) {
-    let p = this.paths.glyph.inflateToNewCPaths64(amount);
+  addInflated(id, amount, settings) {
+    let p = this.paths.glyph.inflateToNewCPaths64(amount, settings);
     this.add(id, p);
     return p;
   }
-  getGlyphNewCPaths64() {
-    let p = this.paths.glyph.inflateToNewCPaths64(0);
+  getGlyphNewCPaths64(settings) {
+    let p = this.paths.glyph.inflateToNewCPaths64(0, settings);
     return p;
   }
   path(id) {
@@ -1294,6 +1525,57 @@ function fillOtInfoTables(fontInfo) {
   }
   doGtable(fontInfo.GSUB);
   doGtable(fontInfo.GPOS);
+}
+
+function splitFirst(str) {
+  if (!str) return null;
+  if (typeof str === 'number') return [str, ''];
+  const m = str.match(/^\s*(\d+(?:\.\d+)?%?)[\s,]*(.*?)\s*$/s);
+  return m ? [m[1], m[2]] : null;
+}
+
+// Class to handle field size and optional brush
+class FieldValue {
+  constructor(val, def) {
+    this.default = def;
+    this.brush = undefined;
+    this.scale = 1;
+    const arr = splitFirst(val);
+    if (arr) {
+      const v = arr[0];
+      if (typeof v === 'number')
+        this.scale = v;
+      else {
+        this.scale = parseFloat(arr[0]);
+        if (arr[0].includes('%')) {
+          if (!this.default) throw new Error(`Default FieldValue default not defined (${val})`);
+          this.scale = Math.round(this.scale / 100.0 * this.default.getScale());
+        }        
+      }
+      if (arr[1] !== '') {
+        this.brushText = arr[1];
+        this.brush = getBrush(this.brushText);
+      }
+    }
+  }
+  enlarge(percent) {
+    // For the far fields values
+    const res = new FieldValue(undefined, this.def);
+    res.brush = this.brush;
+    res.scale = Math.round(this.scale / 100.0 * (100.0 + percent));
+    return res;
+  }
+  getScale() {
+    return this.scale;
+  }
+  getBrush() {
+    if (!this.brush) return this.default?.brush;
+    return this.brush;
+  }
+  compare(other) {
+    if (!other) return false;
+    return (other.scale === this.scale) && (other.brushText === this.brushText);
+  }
 }
 
 class HarfBuzzForceFieldClass {
@@ -1403,69 +1685,73 @@ class HarfBuzzForceFieldClass {
     return (this.getGlyphClass(gid) === 3);
   }
   setBase(near, far) {
-    if ((near != this.baseNear) || (far != this.baseFar)) {
+    const nv = new FieldValue(near);
+    const fv = new FieldValue(far);
+    if (!nv.compare(this.baseNear) || !fv.compare(this.baseFar)) {
       this.freeGlyphCache();
     }
-    this.baseNear = near;
-    this.baseFar  = far;
+    this.baseNear = nv;
+    this.baseFar  = fv;
   }
   setMark(near, nearBase, far) {
-    if ((near != this.markNear) ||
-        (far  != this.markFar) ||
-        (nearBase != this.markNearBase)) {
+    const nv = new FieldValue(near);
+    const nbv = new FieldValue(nearBase);
+    const fv = new FieldValue(far);
+    if (!nv.compare(this.markNear) || !fv.compare(this.markFar) || !nbv.compare(this.markNearBase)) {
       this.freeGlyphCache();
     }
-    this.markNear = near;
-    this.markNearBase = nearBase;
-    this.markFar = far;
+    this.markNear = nv;
+    this.markNearBase = nbv;
+    this.markFar = fv;
   }
   setGlyphValues(gid, far, near, nearBase, clusterOverlap) {
     if (typeof clusterOverlap === 'undefined') {
       clusterOverlap = this.defaults.clusterOverlap;
     }
+    const isMark = (this.getGlyphClass(gid) === 3);
+    let nvd = isMark ? this.markNear : this.baseNear;
+    let fvd = isMark ? this.markFar : this.baseFar;
+    let nbvd = this.markNearBase;
+
+    const gd = this.getGlyphValues(gid);
+    if (gd) {
+      nvd = gd.near;
+      fvd = gd.far;
+      nbvd = gd.nearBase;
+    }
+
+    const nv = new FieldValue(near, nvd);
+    const fv = new FieldValue(far, fvd);
+    const nbv = new FieldValue(nearBase, nbvd);
+
     this.glyphValues[gid] = {
-      far:far,
-      near:near,
-      nearBase:nearBase,
+      far:fv,
+      near:nv,
+      nearBase:nbv,
       clusterOverlap: clusterOverlap,
     };
   }
   getGlyphValues(gid) {
     const isMark = (this.getGlyphClass(gid) === 3);
     const gb = this.glyphValues[gid];
-    var near = this.baseNear || 30;
-    var far  = this.baseFar || 90;
-    var nearBase = null;
-    var clusterOverlap = undefined;
 
-    if (isMark) {
-      near = this.markNear || 30;
-      far  = this.markFar || 90;
-      nearBase = this.markNearBase || 1;
-    }
-    if (isAssigned(gb)) {
-      var toValue = function(txt, v) {
-        if (txt ===  null) return v;
-        if (typeof(txt) === 'undefined') return v;
-        if (typeof(txt) !== 'string') return txt;
-        const n = parseInt(txt, 10);
-        if (txt.includes('%')) {
-          return (v * n) / 100.0;
-        }
-        if (isNaN(txt)) return v;
-        return n;
-      }
-      far = toValue(gb.far, far);
-      near = toValue(gb.near, near);
-      if (isMark)
-        nearBase = toValue(gb.nearBase, nearBase);
-      clusterOverlap = gb.clusterOverlap;
+    if (!isAssigned(gb)) {
+      // Infrequent
+      const fv = isMark ? this.markFar : this.baseFar;
+      const nv = isMark ? this.markNear : this.baseNear;
+      const nbv = this.markNearBase;
+      return {
+        far: fv,
+        near: nv,
+        nearBase: nbv,
+        clusterOverlap: undefined,
+      };
     }
     return {
-      far: far,
-      near: near,
-      nearBase: nearBase,
-      clusterOverlap: clusterOverlap,
+      far: gb.far,
+      near: gb.near,
+      nearBase: gb.nearBase,
+      clusterOverlap: gb.clusterOverlap,
     };
   }
 
@@ -1574,16 +1860,19 @@ class HarfBuzzForceFieldClass {
       const arcTolerance = 0;
 
       const gb = this.getGlyphValues(glyphId);
-      const nearInflate = gb.near;  // Overlaps = too close
-      const farInflate  = gb.far;   // No Overlaps = too far
 
       let gs = new GlyphSet(glyphId, cpaths64);
-      gs.addInflated('near', nearInflate);
-      gs.addInflated('far',  farInflate);
-      
+      /*
+      const polars = [];
+      polars.push({deg: Number(msAngle.value), reach:Number(msWidth.value)});
+      */
+
+      gs.addInflated('near', gb.near);
+      gs.addInflated('far',  gb.far);
+
       for (let i=0;i<this.farValues.length;i++) {
         const p = this.farValues[i];
-        gs.addInflated(`far${p}`, farInflate * (1 + p/100.0)); // 110% to 190%
+        gs.addInflated(`far${p}`, gb.far.enlarge(p)); // 110% to 190%
       }
       
       if ((typeof(gb.nearBase) !== 'undefined') && (gb.nearBase !== null)) {
@@ -2045,6 +2334,11 @@ function updateValues() {
     markNearValue.innerText     = markNear.value;
     markNearBaseValue.innerText = markNearBase.value;
     markFarValue.innerText      = markFar.value;
+
+    /*~~~~ vvvv ~~~~
+    msAngleValue.innerText = msAngle.value;
+    msWidthValue.innerText = msWidth.value;
+      ~~~~ ^^^^ ~~~~*/
   }
   //test(inputText.value);
   updateOptionsObject();
@@ -3545,7 +3839,7 @@ window.saveJson = saveWordListAsJson;
 </script>
 
 </br>
-</br>2026-10-01 10:45
+</br>2026-10-16 1040
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
