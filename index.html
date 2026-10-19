@@ -560,8 +560,9 @@ function copyGlyphNames() {
   }
   for (let i=0; i<max; i++) {
     let name = hbTest.getGlyphName(i);
+    const markIndicator = hbTest.markIndicator(i);
     if (!name) name = '';
-    txt += `${i}\t${name}`;
+    txt += `${i}\t${markIndicator}\t${name}`;
     if (!glyphSet.has(i)) {
       txt += `\t*`;
     }
@@ -596,8 +597,9 @@ function debugGlyphNames() {
 
   for (let i=0; i<max; i++) {
     let name = hbTest.getGlyphName(i);
+    const markIndicator = hbTest.markIndicator(i);
     if (!name) name = '';
-    txt += `${i}\t`;
+    txt += `${i}${markIndicator}\t`;
     txt += fieldSet.has(i)   ? 'f' : ' ';
     txt += overlapSet.has(i) ? 'o' : ' ';
     txt += barSet.has(i)     ? 'b' : ' ';
@@ -620,7 +622,8 @@ function debugGIDs() {
     processRangeInteger(gid, hbTest.groups,
       function (g) {
         const name = hbTest.getGlyphName(g);
-        txt += `  ${g}\t${name || ''}\r\n`;
+        const markIndicator = hbTest.markIndicator(g);
+        txt += `  ${g}${markIndicator}\t${name || ''}\r\n`;
         count++;
       });
     //console.log(`"${gid}" ->\r\n${txt}`);
@@ -655,10 +658,11 @@ function debugGroup() {
       for (let vv of group) {
         countGlyph++;
         const name = hbTest.getGlyphName(vv);
+        const markIndicator = hbTest.markIndicator(vv);
         if ((groupName !== '') && ((name.includes(groupName)) || (vv == parseInt(groupName))))
-          txt += `  ${vv}\t${name || ''}\t<---\r\n`;
+          txt += `  ${vv}${markIndicator}\t${name || ''}\t<---\r\n`;
         else        
-          txt += `  ${vv}\t${name || ''}\r\n`;
+          txt += `  ${vv}${markIndicator}\t${name || ''}\r\n`;
       }
       txt += '\r\n\r\n';
     }
@@ -705,7 +709,8 @@ function debugOverlaps() {
       let txt = '';
       set.forEach( function(v) {
         const name = hbTest.getGlyphName(v);
-        txt += `  ${v}\t${name || ''}\r\n`;
+        const markIndicator = hbTest.markIndicator(v);
+        txt += `  ${v}${markIndicator}\t${name || ''}\r\n`;
       });
       output += `#${i}: '${set.src}'\r\n${txt}\r\n\r\n`;
     }
@@ -726,7 +731,8 @@ function debugBar() {
   for (let i=0; i<max; i++) {
     const g = bar.gids[i];
     const name = hbTest.getGlyphName(g);
-    txt += `  ${g}\t${name || ''}\r\n`;
+    const markIndicator = hbTest.markIndicator(g);
+    txt += `  ${g}${markIndicator}\t${name || ''}\r\n`;
     count++;
   }
   debugOutputText(`Bar gids:\r\n${txt}`);
@@ -1683,6 +1689,9 @@ class HarfBuzzForceFieldClass {
   }
   isMarkClass(gid) {
     return (this.getGlyphClass(gid) === 3);
+  }
+  markIndicator(gid) {
+    return this.isMarkClass(gid) ? '*' : ' ';
   }
   setBase(near, far) {
     const nv = new FieldValue(near);
@@ -3839,7 +3848,7 @@ window.saveJson = saveWordListAsJson;
 </script>
 
 </br>
-</br>2026-10-16 1040
+</br>2026-10-19 1205
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
