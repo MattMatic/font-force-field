@@ -1669,6 +1669,7 @@ class HarfBuzzForceFieldClass {
     }
   }
   getGlyphClass(gid) {
+    if (!this.otFont.tables.gdef) return 0;
     return this.otLayout.getGlyphClass(this.otFont.tables.gdef.classDef, gid);
   }
   getGlyphName(gid) {
@@ -3848,7 +3849,7 @@ window.saveJson = saveWordListAsJson;
 </script>
 
 </br>
-</br>2026-10-19 1205
+</br>2026-10-22 1105
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
