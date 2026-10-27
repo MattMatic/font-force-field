@@ -1482,7 +1482,8 @@ class GlyphSet {
     return p;
   }
   getGlyphNewCPaths64(settings) {
-    let p = this.paths.glyph.inflateToNewCPaths64(0, settings);
+    const v = new FieldValue(1);
+    let p = this.paths.glyph.inflateToNewCPaths64(v, settings);
     return p;
   }
   path(id) {
@@ -1892,13 +1893,13 @@ class HarfBuzzForceFieldClass {
         const bar = hbTest.getBarCPath();
         let p = gs.getGlyphNewCPaths64();
         p.subtract(bar);
-        let pi = p.inflateToNewCPaths64(nearInflate);
+        let pi = p.inflateToNewCPaths64(gb.near);
         p.setPaths64(pi.paths64);
         gs.add('nearBar', p);
 
         p = gs.getGlyphNewCPaths64();
         p.subtract(bar);
-        pi = p.inflateToNewCPaths64(farInflate);
+        pi = p.inflateToNewCPaths64(gb.far);
         p.setPaths64(pi.paths64);
         gs.add('farBar', p);
       }
@@ -2879,13 +2880,13 @@ function processWord(word, display) {
         {
           // Going to use the Mark's glyph - not it's near-field
           if (i1 == markSet[0]) {
-            // Mark to Base
+            // Mark (x1) to Base (x2)
             if (x1.gs.path('nearBase'))
               collision = x1.gs.path('nearBase').collisionCPath(x2.gs.path('near'));
             else
               collision = x1.gs.path('glyph').collisionCPath(x2.gs.path('near'));
           } else {
-            // Base to Mark
+            // Base (x1) to Mark (x2)
             if (x2.gs.path('nearBase'))
               collision = x1.gs.path('near').collisionCPath(x2.gs.path('nearBase'));
             else
@@ -3849,7 +3850,7 @@ window.saveJson = saveWordListAsJson;
 </script>
 
 </br>
-</br>2026-10-22 1105
+</br>2026-10-27 1630
 </br><a href='https://github.com/MattMatic/font-force-field'>GitHub/MattMatic/font-force-field</a>
 </body>
 </html>
